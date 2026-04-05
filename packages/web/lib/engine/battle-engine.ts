@@ -267,11 +267,17 @@ export function evSk(
   const effect = emptySkillEffect();
 
   // Accumulators for additive stacking within each buff category
-  let atkDmgBufSum = 0;   // damage increase buffs (-> damageUp)
-  let defBufSum = 0;       // defense / damage reduction buffs (-> defenseUp)
-  let atkBufSum = 0;       // flat ATK buff (treated as damageUp variant)
-  let atkDebufSum = 0;     // debuff reducing enemy ATK/damage (-> oppDamageDown applied to enemy)
-  let defDebufSum = 0;     // debuff reducing enemy DEF (-> oppDefenseDown)
+  let atkDmgBufSum = 0;     // 与ダメ増加 (-> damageUp)
+  let defBufSum = 0;         // 被ダメ軽減 (-> defenseUp)
+  let atkBufSum = 0;         // ATK増加 (-> damageUp variant)
+  let lethBufSum = 0;        // 殺傷力増加 (-> damageUp variant)
+  let hpBufSum = 0;          // HP増加 (-> defenseUp variant)
+  let defStatBufSum = 0;     // DEF増加 (-> defenseUp variant)
+  let atkDebufSum = 0;       // 敵被ダメ増加 (-> oppDamageDown)
+  let defDebufSum = 0;       // 敵DEF低下 (-> oppDefenseDown)
+  let atkStatDebufSum = 0;   // 敵ATK低下 (-> oppDamageDown variant)
+  let lethDebufSum = 0;      // 敵殺傷力低下 (-> oppDamageDown variant)
+  let extraAtkSum = 0;       // 追加攻撃 (-> damageUp加算)
 
   const processSkill = (skill: Skill): void => {
     let fires = false;
@@ -287,11 +293,21 @@ export function evSk(
     }
     if (!fires) return;
 
+    // 攻撃系バフ
     if (skill.atkDmgBuf) atkDmgBufSum += skill.atkDmgBuf;
     if (skill.atkBuf) atkBufSum += skill.atkBuf;
+    if (skill.lethBuf) lethBufSum += skill.lethBuf;
+    if (skill.extraAtk) extraAtkSum += skill.extraAtk;
+    // 防御系バフ
     if (skill.defBuf) defBufSum += skill.defBuf;
+    if (skill.hpBuf) hpBufSum += skill.hpBuf;
+    if (skill.defStatBuf) defStatBufSum += skill.defStatBuf;
+    // 敵デバフ
     if (skill.atkDebuf) atkDebufSum += skill.atkDebuf;
     if (skill.defDebuf) defDebufSum += skill.defDebuf;
+    if (skill.atkStatDebuf) atkStatDebufSum += skill.atkStatDebuf;
+    if (skill.lethDebuf) lethDebufSum += skill.lethDebuf;
+    // その他
     if (skill.dotDmg) effect.dotDmg += skill.dotDmg;
     if (skill.reflectBuf) effect.reflectBuf += skill.reflectBuf;
 
@@ -339,11 +355,12 @@ export function evSk(
   }
 
   // Convert additive accumulators to multiplicative SkillMod
-  // DamageUp = (1 + atkDmgBufSum) * (1 + atkBufSum) — two different effect_ops multiply
-  effect.selfMod.damageUp = (1 + atkDmgBufSum) * (1 + atkBufSum);
-  effect.selfMod.defenseUp = 1 + defBufSum;
+  // DamageUp = 与ダメ × ATK × 殺傷力 × 追加攻撃（異なるeffect_opは乗算）
+  effect.selfMod.damageUp = (1 + atkDmgBufSum + extraAtkSum) * (1 + atkBufSum) * (1 + lethBufSum);
+  // DefenseUp = 被ダメ軽減 × HP × DEF（異なるeffect_opは乗算）
+  effect.selfMod.defenseUp = (1 + defBufSum) * (1 + hpBufSum) * (1 + defStatBufSum);
   // Debuffs applied to opponent
-  effect.oppMod.damageDown = 1 + atkDebufSum;   // reduces enemy damage
+  effect.oppMod.damageDown = (1 + atkDebufSum) * (1 + atkStatDebufSum) * (1 + lethDebufSum);
   effect.oppMod.defenseDown = 1 + defDebufSum;  // weakens enemy defense
 
   return effect;
