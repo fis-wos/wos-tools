@@ -62,11 +62,19 @@ export default function Header() {
             <span className="sm:hidden">SIM</span>
           </Link>
           <Link
+            href="/counter"
+            className="flex items-center gap-1.5 rounded-lg bg-white/15 backdrop-blur-sm px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-white ring-1 ring-white/20 transition-all hover:bg-white/25 hover:scale-105"
+          >
+            <span>🎯</span>
+            <span className="hidden sm:inline">カウンター</span>
+            <span className="sm:hidden">CTR</span>
+          </Link>
+          <Link
             href="/lottery"
             className="flex items-center gap-1.5 rounded-lg bg-white/15 backdrop-blur-sm px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-white ring-1 ring-white/20 transition-all hover:bg-white/25 hover:scale-105"
           >
             <span>🎰</span>
-            <span className="hidden sm:inline">SVS抽選</span>
+            <span className="hidden sm:inline">SVS抽選for564</span>
             <span className="sm:hidden">SVS</span>
           </Link>
         </nav>

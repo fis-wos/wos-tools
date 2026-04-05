@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   HEROES,
   type Hero,
@@ -472,6 +472,44 @@ export default function SimulatorPage() {
   const [sortBy, setSortBy] = useState<'default' | 'atk' | 'def' | 'atkDmg' | 'defBuf' | 'leth'>('default');
   const [simResult, setSimResult] = useState<SimAggregateResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+
+  // カウンターページからのプリセット読み込み
+  useEffect(() => {
+    try {
+      const preset = localStorage.getItem('wos_sim_preset');
+      if (!preset) return;
+      localStorage.removeItem('wos_sim_preset'); // 一度読んだら消す
+      const data = JSON.parse(preset);
+
+      const loadSide = (sideData: Record<string, unknown>, side: 'atk' | 'def') => {
+        const leaders = (sideData.leaders as (string | null)[]) || [];
+        const riderIds = (sideData.riders as string[]) || [];
+        const heroLeaders: (Hero | null)[] = [
+          leaders[0] ? HEROES.find(h => h.id === leaders[0]) || null : null,
+          leaders[1] ? HEROES.find(h => h.id === leaders[1]) || null : null,
+          leaders[2] ? HEROES.find(h => h.id === leaders[2]) || null : null,
+        ];
+        const heroRiders = riderIds.map(id => HEROES.find(h => h.id === id)).filter(Boolean) as Hero[];
+        setFormations(prev => ({
+          ...prev,
+          [side]: {
+            ...prev[side],
+            leaders: heroLeaders,
+            riders: heroRiders,
+            shieldRatio: (sideData.shieldRatio as number) || prev[side].shieldRatio,
+            spearRatio: (sideData.spearRatio as number) || prev[side].spearRatio,
+            bowRatio: (sideData.bowRatio as number) || prev[side].bowRatio,
+            totalTroops: (sideData.totalTroops as number) || prev[side].totalTroops,
+          },
+        }));
+      };
+
+      if (data.atk) loadSide(data.atk, 'atk');
+      if (data.def) loadSide(data.def, 'def');
+    } catch (e) {
+      console.error('Failed to load preset:', e);
+    }
+  }, []);
 
   const currentFormation = formations[activeSide];
 

@@ -97,7 +97,7 @@ export default function Home() {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-2xl">🎰</span>
                 <h3 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-def-blue to-def-blue-light bg-clip-text text-transparent">
-                  SVS褒賞抽選
+                  SVS褒賞抽選for564
                 </h3>
               </div>
               <p className="text-xs sm:text-sm leading-relaxed text-text-secondary line-clamp-2">

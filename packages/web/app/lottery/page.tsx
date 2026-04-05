@@ -3,6 +3,22 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Participant, RewardItem, LotteryConfig, LotteryResult, Winner } from '@/lib/lottery/types';
 import { runLottery, verifyResult } from '@/lib/lottery/lottery-engine';
+import {
+  isSupabaseAvailable,
+  resetSupabaseCache,
+  getParticipants,
+  addParticipant as apiAddParticipant,
+  deleteParticipant as apiDeleteParticipant,
+  clearAllParticipants,
+  getRewards,
+  addReward as apiAddReward,
+  updateReward as apiUpdateReward,
+  deleteReward as apiDeleteReward,
+  swapRewardOrder,
+  saveResults,
+  clearResults,
+  getDeadline,
+} from '@/lib/svs-api';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -121,6 +137,11 @@ export default function LotteryPage() {
   const [rewards, setRewards] = useState<RewardItem[]>([]);
   const [result, setResult] = useState<LotteryResult | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [useSupabase, setUseSupabase] = useState(false);
+
+  // Deadline
+  const [deadline, setDeadline] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   // Application form
   const [charName, setCharName] = useState('');
@@ -145,15 +166,47 @@ export default function LotteryPage() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isVerified, setIsVerified] = useState<boolean | null>(null);
 
-  // --- Hydrate from localStorage ---
+  // --- Hydrate: try Supabase first, fallback to localStorage ---
   useEffect(() => {
-    setApplicants(loadJSON<Participant[]>(STORAGE_KEYS.applicants, []));
-    setRewards(loadJSON<RewardItem[]>(STORAGE_KEYS.rewards, []));
-    setResult(loadJSON<LotteryResult | null>(STORAGE_KEYS.result, null));
-    setHydrated(true);
+    let cancelled = false;
+
+    async function init() {
+      try {
+        const available = await isSupabaseAvailable();
+        if (cancelled) return;
+
+        if (available) {
+          setUseSupabase(true);
+          const [p, r, dl] = await Promise.all([getParticipants(), getRewards(), getDeadline()]);
+          if (cancelled) return;
+          setApplicants(p);
+          setRewards(r);
+          setDeadline(dl);
+          // Result is stored locally for display since it's derived data
+          setResult(loadJSON<LotteryResult | null>(STORAGE_KEYS.result, null));
+        } else {
+          // Fallback to localStorage
+          setUseSupabase(false);
+          setApplicants(loadJSON<Participant[]>(STORAGE_KEYS.applicants, []));
+          setRewards(loadJSON<RewardItem[]>(STORAGE_KEYS.rewards, []));
+          setResult(loadJSON<LotteryResult | null>(STORAGE_KEYS.result, null));
+        }
+      } catch {
+        // Fallback to localStorage on any error
+        if (cancelled) return;
+        setUseSupabase(false);
+        setApplicants(loadJSON<Participant[]>(STORAGE_KEYS.applicants, []));
+        setRewards(loadJSON<RewardItem[]>(STORAGE_KEYS.rewards, []));
+        setResult(loadJSON<LotteryResult | null>(STORAGE_KEYS.result, null));
+      }
+      if (!cancelled) setHydrated(true);
+    }
+
+    init();
+    return () => { cancelled = true; };
   }, []);
 
-  // --- Persist ---
+  // --- Persist to localStorage (as backup, always) ---
   useEffect(() => {
     if (!hydrated) return;
     saveJSON(STORAGE_KEYS.applicants, applicants);
@@ -169,18 +222,48 @@ export default function LotteryPage() {
     saveJSON(STORAGE_KEYS.result, result);
   }, [result, hydrated]);
 
+  // --- Countdown timer for deadline ---
+  useEffect(() => {
+    if (!deadline) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [deadline]);
+
+  const isPastDeadline = useMemo(() => {
+    if (!deadline) return false;
+    return now >= new Date(deadline).getTime();
+  }, [deadline, now]);
+
+  const countdownText = useMemo(() => {
+    if (!deadline) return null;
+    const deadlineMs = new Date(deadline).getTime();
+    const diff = deadlineMs - now;
+    if (diff <= 0) return null;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    if (days > 0) return `あと${days}日${hours}時間${minutes}分`;
+    if (hours > 0) return `あと${hours}時間${minutes}分${seconds}秒`;
+    return `あと${minutes}分${seconds}秒`;
+  }, [deadline, now]);
+
+  const deadlineDisplay = useMemo(() => {
+    if (!deadline) return null;
+    const d = new Date(deadline);
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }, [deadline]);
+
   // --- Build winner map for result table ---
   const winnerMap = useMemo(() => {
     if (!result) return new Map<string, Winner>();
     const m = new Map<string, Winner>();
     for (const w of result.winners) {
-      // key by reward expanded id
       m.set(w.reward.id, w);
     }
     return m;
   }, [result]);
 
-  // Build display rows: one per expanded reward slot
   const resultRows = useMemo(() => {
     const expanded = expandRewards(rewards);
     return expanded.map((r) => {
@@ -190,16 +273,28 @@ export default function LotteryPage() {
   }, [rewards, winnerMap]);
 
   // --- User actions ---
-  const handleApply = useCallback(() => {
+  const handleApply = useCallback(async () => {
     const name = charName.trim();
     const alliance = allianceName.trim();
     if (!name || !alliance) return;
-    const p = makeParticipant(name, alliance);
-    setApplicants((prev) => [...prev, p]);
+
+    if (useSupabase) {
+      try {
+        const p = await apiAddParticipant(name, alliance);
+        setApplicants((prev) => [...prev, p]);
+      } catch {
+        // Fallback: add locally
+        const p = makeParticipant(name, alliance);
+        setApplicants((prev) => [...prev, p]);
+      }
+    } else {
+      const p = makeParticipant(name, alliance);
+      setApplicants((prev) => [...prev, p]);
+    }
     setCharName('');
     setAllianceName('');
     setApplied(true);
-  }, [charName, allianceName]);
+  }, [charName, allianceName, useSupabase]);
 
   // --- Admin: password ---
   const handlePasswordSubmit = useCallback(() => {
@@ -213,15 +308,30 @@ export default function LotteryPage() {
   }, [passwordInput]);
 
   // --- Admin: applicant management ---
-  const removeApplicant = useCallback((id: string) => {
+  const removeApplicant = useCallback(async (id: string) => {
+    if (useSupabase) {
+      try {
+        await apiDeleteParticipant(id);
+      } catch {
+        // Continue removing locally
+      }
+    }
     setApplicants((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  }, [useSupabase]);
 
   // --- Admin: reward management ---
-  const addOrUpdateReward = useCallback(() => {
+  const addOrUpdateReward = useCallback(async () => {
     const name = newRewardName.trim();
     if (!name) return;
+
     if (editingRewardId) {
+      if (useSupabase) {
+        try {
+          await apiUpdateReward(editingRewardId, { name, quantity: newRewardQty, tier: newRewardTier });
+        } catch {
+          // Continue locally
+        }
+      }
       setRewards((prev) =>
         prev.map((r) =>
           r.id === editingRewardId
@@ -231,6 +341,18 @@ export default function LotteryPage() {
       );
       setEditingRewardId(null);
     } else {
+      if (useSupabase) {
+        try {
+          const newReward = await apiAddReward(name, newRewardTier, newRewardQty);
+          setRewards((prev) => [...prev, newReward]);
+          setNewRewardName('');
+          setNewRewardQty(1);
+          setNewRewardTier('A');
+          return;
+        } catch {
+          // Fallback to local
+        }
+      }
       setRewards((prev) => [
         ...prev,
         {
@@ -244,7 +366,7 @@ export default function LotteryPage() {
     setNewRewardName('');
     setNewRewardQty(1);
     setNewRewardTier('A');
-  }, [newRewardName, newRewardQty, newRewardTier, editingRewardId]);
+  }, [newRewardName, newRewardQty, newRewardTier, editingRewardId, useSupabase]);
 
   const startEditReward = useCallback((r: RewardItem) => {
     setEditingRewardId(r.id);
@@ -260,21 +382,36 @@ export default function LotteryPage() {
     setNewRewardTier('A');
   }, []);
 
-  const removeReward = useCallback((id: string) => {
+  const removeReward = useCallback(async (id: string) => {
+    if (useSupabase) {
+      try {
+        await apiDeleteReward(id);
+      } catch {
+        // Continue locally
+      }
+    }
     setRewards((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+  }, [useSupabase]);
 
-  const moveReward = useCallback((id: string, dir: -1 | 1) => {
+  const moveReward = useCallback(async (id: string, dir: -1 | 1) => {
+    const idx = rewards.findIndex((r) => r.id === id);
+    if (idx < 0) return;
+    const target = idx + dir;
+    if (target < 0 || target >= rewards.length) return;
+
+    if (useSupabase) {
+      try {
+        await swapRewardOrder(rewards[idx].id, rewards[target].id);
+      } catch {
+        // Continue locally
+      }
+    }
     setRewards((prev) => {
-      const idx = prev.findIndex((r) => r.id === id);
-      if (idx < 0) return prev;
-      const target = idx + dir;
-      if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
       [next[idx], next[target]] = [next[target], next[idx]];
       return next;
     });
-  }, []);
+  }, [rewards, useSupabase]);
 
   // --- Admin: draw ---
   const handleDraw = useCallback(() => {
@@ -286,13 +423,22 @@ export default function LotteryPage() {
     const seed = seedInput.trim() || generateSeed();
     const config: LotteryConfig = { ...EQUAL_CONFIG, seed };
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const lotteryResult = runLottery(applicants, expanded, config);
       setResult(lotteryResult);
       setSeedInput(lotteryResult.seed);
       setIsDrawing(false);
+
+      // Save to Supabase if available
+      if (useSupabase) {
+        try {
+          await saveResults(lotteryResult);
+        } catch {
+          // Continue - result is saved locally via useEffect
+        }
+      }
     }, 800);
-  }, [applicants, rewards, seedInput]);
+  }, [applicants, rewards, seedInput, useSupabase]);
 
   const handleVerify = useCallback(() => {
     if (!result) return;
@@ -301,11 +447,18 @@ export default function LotteryPage() {
     setIsVerified(verified);
   }, [result, applicants, rewards]);
 
-  const handleResetResult = useCallback(() => {
+  const handleResetResult = useCallback(async () => {
     setResult(null);
     setIsVerified(null);
     setSeedInput('');
-  }, []);
+    if (useSupabase) {
+      try {
+        await clearResults();
+      } catch {
+        // Ignore
+      }
+    }
+  }, [useSupabase]);
 
   // --- Render ---
   if (!hydrated) {
@@ -321,7 +474,7 @@ export default function LotteryPage() {
       {/* Header with gear icon */}
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-gradient-gold text-2xl font-bold">
-          SVS褒賞抽選
+          SVS褒賞抽選for564
         </h2>
         <button
           onClick={() => setShowAdminModal(true)}
@@ -346,8 +499,33 @@ export default function LotteryPage() {
       </div>
 
       {/* ============================================================= */}
+      {/* Deadline Banner                                                */}
+      {/* ============================================================= */}
+      {deadline && (
+        <section className="mb-4">
+          {isPastDeadline ? (
+            <div className="rounded-xl border border-atk-red/30 bg-atk-red/10 px-5 py-4 text-center">
+              <p className="text-sm font-bold text-atk-red">応募は締め切りました</p>
+              <p className="mt-1 text-xs text-atk-red/70">締切: {deadlineDisplay}</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-def-blue/30 bg-def-blue/10 px-5 py-4 text-center">
+              <p className="text-xs text-def-blue/70">応募締切: {deadlineDisplay}</p>
+              <p className="mt-1 text-lg font-bold text-def-blue">{countdownText}</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ============================================================= */}
       {/* Application Form                                               */}
       {/* ============================================================= */}
+      {isPastDeadline ? (
+        <section className="panel-glow mb-8 rounded-xl border border-wos-border bg-wos-panel p-5">
+          <h3 className="mb-2 text-base font-bold text-text-primary">応募フォーム</h3>
+          <p className="text-sm text-text-muted">応募受付は終了しました。抽選結果は下の一覧で確認できます。</p>
+        </section>
+      ) : (
       <section className="panel-glow mb-8 rounded-xl border border-wos-border bg-wos-panel p-5">
         <h3 className="mb-4 text-base font-bold text-text-primary">応募フォーム</h3>
         {applied ? (
@@ -398,6 +576,7 @@ export default function LotteryPage() {
           </div>
         )}
       </section>
+      )}
 
       {/* ============================================================= */}
       {/* Results Table                                                  */}

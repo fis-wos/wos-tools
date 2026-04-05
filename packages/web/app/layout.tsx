@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "WOS Tools - Whiteout Survival Toolkit",
   description:
-    "集結シミュレーターとSVS褒賞抽選ツール for Whiteout Survival",
+    "集結シミュレーターとSVS褒賞抽選for564ツール for Whiteout Survival",
 };
 
 export default function RootLayout({
