@@ -1,0 +1,19 @@
+{
+  "name": "@wos-tools/core",
+  "version": "1.0.0",
+  "description": "WOS battle simulator core engine",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "files": ["dist"],
+  "license": "ISC",
+  "dependencies": {
+    "@wos-tools/data": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

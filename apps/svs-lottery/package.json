@@ -1,0 +1,17 @@
+{
+  "name": "@wos-tools/svs-lottery",
+  "version": "1.0.0",
+  "description": "WOS SVS褒賞抽選・配布ツール",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["wos", "svs", "lottery"],
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

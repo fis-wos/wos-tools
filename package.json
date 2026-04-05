@@ -1,0 +1,23 @@
+{
+  "name": "wos-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WOS (Whiteout Survival) game tools",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "clean": "npm run clean --workspaces",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.2"
+  }
+}

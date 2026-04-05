@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS褒賞抽選ツール - WOS Tools</title>
+<style>
+:root {
+  --bg: #0b1220;
+  --bgc: #111928;
+  --ct: #e8edf5;
+  --cs: #8ba0bc;
+  --gold: #d4a017;
+  --gold2: #f0c040;
+  --golddim: rgba(212,160,23,.15);
+  --goldbrd: rgba(212,160,23,.4);
+  --atk: #e05050;
+  --def: #3a8fd4;
+  --tierS: #ff6b6b;
+  --tierA: #ffa726;
+  --tierB: #66bb6a;
+  --radius: 8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ct);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+.app-header {
+  background: linear-gradient(135deg, var(--bgc), #1a2540);
+  border-bottom: 2px solid var(--goldbrd);
+  padding: 16px 20px;
+  text-align: center;
+}
+.app-header h1 {
+  font-size: 1.4rem;
+  color: var(--gold2);
+  letter-spacing: 2px;
+}
+.app-header .subtitle { font-size: 0.8rem; color: var(--cs); margin-top: 4px; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background: var(--bgc);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 12px 8px;
+  background: none;
+  border: none;
+  color: var(--cs);
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.tab-btn.active { color: var(--gold2); border-bottom-color: var(--gold); }
+.tab-btn:hover { color: var(--ct); background: rgba(255,255,255,0.03); }
+
+.tab-content { display: none; padding: 16px; max-width: 900px; margin: 0 auto; }
+.tab-content.active { display: block; }
+
+/* Forms */
+.card {
+  background: var(--bgc);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h3 {
+  color: var(--gold2);
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+label { display: block; font-size: 0.82rem; color: var(--cs); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: var(--ct);
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--gold); }
+textarea { resize: vertical; font-family: monospace; font-size: 0.82rem; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.form-row > * { flex: 1; min-width: 100px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: 1px solid var(--goldbrd);
+  border-radius: 6px;
+  background: var(--golddim);
+  color: var(--gold2);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+.btn:hover { background: rgba(212,160,23,0.25); }
+.btn:active { transform: scale(0.97); }
+.btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+.btn-danger { border-color: rgba(224,80,80,0.4); background: rgba(224,80,80,0.1); color: var(--atk); }
+.btn-danger:hover { background: rgba(224,80,80,0.2); }
+.btn-blue { border-color: rgba(58,143,212,0.4); background: rgba(58,143,212,0.1); color: var(--def); }
+.btn-blue:hover { background: rgba(58,143,212,0.2); }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th {
+  text-align: left;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.3);
+  color: var(--gold2);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--ct); }
+th.sortable .sort-arrow { margin-left: 4px; font-size: 0.65rem; opacity: 0.4; }
+th.sortable.sort-active .sort-arrow { opacity: 1; color: var(--gold2); }
+td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+.tier-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.tier-S { background: rgba(255,107,107,0.2); color: var(--tierS); }
+.tier-A { background: rgba(255,167,38,0.2); color: var(--tierA); }
+.tier-B { background: rgba(102,187,106,0.2); color: var(--tierB); }
+
+/* Slider */
+.slider-group { margin-bottom: 14px; }
+.slider-group .slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+.slider-group .slider-header span:last-child { color: var(--gold2); font-weight: 600; }
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  border: none;
+  padding: 0;
+  margin-bottom: 10px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gold);
+  cursor: pointer;
+}
+
+/* Animation overlay */
+.lottery-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.92);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.lottery-overlay.active { display: flex; }
+
+/* Slot machine animation */
+.slot-machine {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.slot-machine .slot-label {
+  font-size: 1rem;
+  color: var(--cs);
+  margin-bottom: 12px;
+  letter-spacing: 2px;
+}
+.slot-reels {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.slot-reel {
+  width: 80px;
+  height: 90px;
+  background: rgba(0,0,0,0.6);
+  border: 2px solid var(--goldbrd);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+.slot-reel-inner {
+  position: absolute;
+  width: 100%;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.slot-reel-item {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+}
+.slot-reel.spinning .slot-reel-inner {
+  animation: slotSpin 0.15s linear infinite;
+}
+@keyframes slotSpin {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-90px); }
+}
+.slot-result-text {
+  font-size: 1.6rem;
+  color: var(--gold2);
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.slot-result-text.visible { opacity: 1; }
+
+/* Particle effects */
+.particle-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1001;
+  overflow: hidden;
+}
+.particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: particleFall linear forwards;
+}
+@keyframes particleFall {
+  0% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translateY(100vh) rotate(720deg) scale(0.3); }
+}
+.confetti {
+  position: absolute;
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+  animation: confettiFall linear forwards;
+}
+@keyframes confettiFall {
+  0% { opacity: 1; transform: translateY(-20px) rotateX(0) rotateZ(0); }
+  100% { opacity: 0; transform: translateY(100vh) rotateX(900deg) rotateZ(360deg); }
+}
+
+.lottery-spin {
+  font-size: 2rem;
+  color: var(--gold2);
+  animation: pulse 0.6s ease-in-out infinite alternate;
+  margin-bottom: 20px;
+  text-align: center;
+}
+@keyframes pulse { from { opacity: 0.4; transform: scale(0.95); } to { opacity: 1; transform: scale(1.05); } }
+.lottery-reveal {
+  text-align: center;
+  animation: fadeUp 0.5s ease-out both;
+}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.reveal-name { font-size: 1.5rem; color: var(--gold2); font-weight: 700; margin: 10px 0; }
+.reveal-reward { font-size: 1.1rem; color: var(--ct); }
+.reveal-tier { font-size: 0.9rem; margin-top: 6px; }
+
+/* Winner reveal card during animation */
+.winner-reveal-card {
+  background: linear-gradient(135deg, rgba(20,30,50,0.95), rgba(10,15,30,0.98));
+  border: 2px solid var(--goldbrd);
+  border-radius: 12px;
+  padding: 24px 32px;
+  text-align: center;
+  animation: cardPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  max-width: 500px;
+  width: 90vw;
+}
+@keyframes cardPop {
+  0% { opacity: 0; transform: scale(0.5) rotateY(90deg); }
+  100% { opacity: 1; transform: scale(1) rotateY(0deg); }
+}
+
+/* Counter badge */
+.counter {
+  display: inline-block;
+  background: var(--golddim);
+  color: var(--gold2);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  margin-left: 8px;
+}
+
+/* Checklist */
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.88rem;
+}
+.check-item input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--gold); }
+.check-item.done { opacity: 0.5; text-decoration: line-through; }
+
+/* Share card */
+.share-card {
+  background: linear-gradient(135deg, #0d1a2e 0%, #1a2540 50%, #0d1a2e 100%);
+  border: 2px solid var(--goldbrd);
+  border-radius: 16px;
+  padding: 28px 24px;
+  max-width: 520px;
+  margin: 0 auto 16px;
+  position: relative;
+  overflow: hidden;
+}
+.share-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 20%, rgba(212,160,23,0.08) 0%, transparent 50%),
+              radial-gradient(circle at 70% 80%, rgba(58,143,212,0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+.share-card-header {
+  text-align: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+.share-card-header h2 {
+  color: var(--gold2);
+  font-size: 1.2rem;
+  letter-spacing: 3px;
+  margin-bottom: 4px;
+}
+.share-card-header .share-subtitle {
+  color: var(--cs);
+  font-size: 0.75rem;
+}
+.share-card-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--goldbrd), transparent);
+  margin: 12px 0;
+}
+.share-card-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.2);
+  position: relative;
+}
+.share-card-item .share-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.share-card-item.tier-S-item .share-rank { background: rgba(255,107,107,0.3); color: var(--tierS); }
+.share-card-item.tier-A-item .share-rank { background: rgba(255,167,38,0.3); color: var(--tierA); }
+.share-card-item.tier-B-item .share-rank { background: rgba(102,187,106,0.3); color: var(--tierB); }
+.share-card-item .share-info { flex: 1; min-width: 0; }
+.share-card-item .share-player { color: var(--ct); font-weight: 600; font-size: 0.9rem; }
+.share-card-item .share-reward-name { color: var(--cs); font-size: 0.78rem; }
+.share-card-footer {
+  text-align: center;
+  margin-top: 16px;
+  position: relative;
+}
+.share-card-footer .share-seed {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: var(--cs);
+  opacity: 0.7;
+}
+
+/* Reward drag & drop / reorder */
+.reward-row { transition: background 0.15s; }
+.reward-row.dragging { opacity: 0.4; background: rgba(212,160,23,0.1); }
+.reward-row.drag-over { border-top: 2px solid var(--gold); }
+.reorder-btns { display: inline-flex; gap: 2px; margin-right: 6px; }
+.reorder-btns button {
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 3px;
+  color: var(--cs);
+  cursor: pointer;
+  line-height: 1;
+}
+.reorder-btns button:hover { background: rgba(255,255,255,0.12); color: var(--ct); }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .form-row { flex-direction: column; }
+  .form-row > * { min-width: 100%; }
+  table { font-size: 0.78rem; }
+  th, td { padding: 6px 6px; }
+  .app-header h1 { font-size: 1.1rem; }
+  .slot-reel { width: 60px; height: 70px; }
+  .slot-reel-item { height: 70px; font-size: 1.6rem; }
+  @keyframes slotSpin {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-70px); }
+  }
+  .share-card { padding: 20px 14px; }
+  .share-card-item { gap: 8px; padding: 6px 8px; }
+  .winner-reveal-card { padding: 18px 16px; }
+  .flex-between { gap: 6px; }
+  .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+  .export-btns { flex-direction: column; }
+  .export-btns .btn { width: 100%; }
+}
+
+/* Seed display */
+.seed-display {
+  background: rgba(0,0,0,0.4);
+  border: 1px dashed var(--goldbrd);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+  margin: 12px 0;
+  font-family: monospace;
+  font-size: 1rem;
+  color: var(--gold2);
+  word-break: break-all;
+}
+.info-text { font-size: 0.78rem; color: var(--cs); margin-top: 6px; }
+
+/* Weight bar */
+.weight-bar {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 16px;
+}
+.weight-bar > div { transition: width 0.3s; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; }
+
+.hidden { display: none !important; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mb-8 { margin-bottom: 8px; }
+.text-center { text-align: center; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>SVS 褒賞抽選ツール</h1>
+  <div class="subtitle">Whiteout Survival - State vs State Reward Lottery</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="participants">参加者管理</button>
+  <button class="tab-btn" data-tab="rewards">報酬設定</button>
+  <button class="tab-btn" data-tab="lottery">抽選実行</button>
+  <button class="tab-btn" data-tab="results">結果・配布</button>
+</nav>
+
+<!-- ==================== Tab 1: Participants ==================== -->
+<div id="tab-participants" class="tab-content active">
+  <div class="card">
+    <h3>参加者追加</h3>
+    <div class="form-row">
+      <div><label>名前</label><input type="text" id="p-name" placeholder="ゲーム内名前"></div>
+      <div><label>キル数</label><input type="number" id="p-kills" placeholder="0" min="0"></div>
+    </div>
+    <div class="form-row">
+      <div><label>スコア</label><input type="number" id="p-score" placeholder="0" min="0"></div>
+      <div><label>参加日数</label><input type="number" id="p-days" placeholder="0" min="0" max="30"></div>
+    </div>
+    <div class="flex-between">
+      <button class="btn" onclick="addParticipant()">+ 追加</button>
+      <button class="btn btn-blue btn-sm" onclick="document.getElementById('csv-input').click()">CSV読込</button>
+      <input type="file" id="csv-input" accept=".csv" class="hidden" onchange="loadCSV(event)">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="flex-between mb-8">
+      <h3 style="border:none;padding:0;margin:0">参加者一覧 <span class="counter" id="p-count">0</span></h3>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <label style="margin:0;font-size:0.78rem">並び替え:</label>
+        <select id="p-sort" onchange="renderParticipants()" style="width:auto;margin:0;padding:4px 8px;font-size:0.78rem">
+          <option value="default">追加順</option>
+          <option value="name-asc">名前 A-Z</option>
+          <option value="name-desc">名前 Z-A</option>
+          <option value="kills-desc">キル数 多い順</option>
+          <option value="kills-asc">キル数 少ない順</option>
+          <option value="score-desc">スコア 多い順</option>
+          <option value="score-asc">スコア 少ない順</option>
+        </select>
+        <button class="btn btn-danger btn-sm" onclick="clearParticipants()">全削除</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th class="sortable" onclick="sortParticipantsBy('name')">名前 <span class="sort-arrow">&#9650;&#9660;</span></th>
+          <th class="sortable" onclick="sortParticipantsBy('kills')">キル数 <span class="sort-arrow">&#9650;&#9660;</span></th>
+          <th class="sortable" onclick="sortParticipantsBy('score')">スコア <span class="sort-arrow">&#9650;&#9660;</span></th>
+          <th class="sortable" onclick="sortParticipantsBy('days')">日数 <span class="sort-arrow">&#9650;&#9660;</span></th>
+          <th></th>
+        </tr></thead>
+        <tbody id="p-table"></tbody>
+      </table>
+    </div>
+    <p class="info-text mt-8">CSV形式: 名前,キル数,スコア,参加日数（ヘッダー行あり/なし対応）</p>
+  </div>
+
+  <div class="card">
+    <h3>サンプルデータ</h3>
+    <p class="info-text mb-8">テスト用にサンプル参加者を一括追加できます。</p>
+    <button class="btn btn-blue btn-sm" onclick="loadSampleData()">サンプルデータ追加</button>
+  </div>
+</div>
+
+<!-- ==================== Tab 2: Rewards ==================== -->
+<div id="tab-rewards" class="tab-content">
+  <div class="card">
+    <h3>報酬アイテム追加</h3>
+    <div class="form-row">
+      <div style="flex:2"><label>報酬名</label><input type="text" id="r-name" placeholder="報酬アイテム名"></div>
+      <div><label>数量</label><input type="number" id="r-qty" placeholder="1" min="1" value="1"></div>
+      <div>
+        <label>Tier</label>
+        <select id="r-tier">
+          <option value="S">S (最高)</option>
+          <option value="A">A (高)</option>
+          <option value="B" selected>B (参加賞)</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" onclick="addReward()">+ 追加</button>
+  </div>
+
+  <div class="card">
+    <div class="flex-between mb-8">
+      <h3 style="border:none;padding:0;margin:0">報酬一覧 <span class="counter" id="r-count">0</span></h3>
+      <button class="btn btn-danger btn-sm" onclick="clearRewards()">全削除</button>
+    </div>
+    <p class="info-text mb-8">上下ボタンまたはドラッグ&amp;ドロップで報酬の抽選順序を変更できます。</p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>順序</th><th>報酬名</th><th>Tier</th><th>数量</th><th></th></tr></thead>
+        <tbody id="r-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>サンプル報酬</h3>
+    <p class="info-text mb-8">テスト用にサンプル報酬を追加できます。</p>
+    <button class="btn btn-blue btn-sm" onclick="loadSampleRewards()">サンプル報酬追加</button>
+  </div>
+</div>
+
+<!-- ==================== Tab 3: Lottery ==================== -->
+<div id="tab-lottery" class="tab-content">
+  <div class="card">
+    <h3>重み設定</h3>
+    <p class="info-text mb-8">各要素の重要度を調整してください。合計が1.0になるよう自動調整されます。</p>
+
+    <div class="slider-group">
+      <div class="slider-header"><span>キル数</span><span id="w-kills-val">0.40</span></div>
+      <input type="range" id="w-kills" min="0" max="100" value="40" oninput="updateWeights()">
+    </div>
+    <div class="slider-group">
+      <div class="slider-header"><span>スコア</span><span id="w-score-val">0.30</span></div>
+      <input type="range" id="w-score" min="0" max="100" value="30" oninput="updateWeights()">
+    </div>
+    <div class="slider-group">
+      <div class="slider-header"><span>参加日数</span><span id="w-days-val">0.20</span></div>
+      <input type="range" id="w-days" min="0" max="100" value="20" oninput="updateWeights()">
+    </div>
+    <div class="slider-group">
+      <div class="slider-header"><span>ベース（全員均等）</span><span id="w-base-val">0.10</span></div>
+      <input type="range" id="w-base" min="0" max="100" value="10" oninput="updateWeights()">
+    </div>
+
+    <div class="weight-bar" id="weight-bar">
+      <div style="width:40%;background:var(--atk)">キル</div>
+      <div style="width:30%;background:var(--def)">スコア</div>
+      <div style="width:20%;background:var(--tierB)">日数</div>
+      <div style="width:10%;background:var(--gold)">ベース</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>シード値</h3>
+    <p class="info-text mb-8">同じシード値で同じ結果を再現できます。空欄で自動生成。</p>
+    <div class="form-row">
+      <div style="flex:3"><input type="text" id="seed-input" placeholder="自動生成（空欄でOK）"></div>
+      <div style="flex:1"><button class="btn btn-sm" style="width:100%;margin-top:20px" onclick="generateRandomSeed()">生成</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>抽選状況</h3>
+    <div class="flex-between">
+      <div>
+        <span class="info-text">参加者: <strong id="l-pcount" style="color:var(--ct)">0</strong>名</span>
+        &nbsp;|&nbsp;
+        <span class="info-text">報酬: <strong id="l-rcount" style="color:var(--ct)">0</strong>個</span>
+      </div>
+    </div>
+    <div class="mt-16 text-center">
+      <button class="btn" id="run-lottery-btn" onclick="executeLottery()" style="padding:14px 40px;font-size:1.1rem">
+        抽選を実行する
+      </button>
+    </div>
+    <p class="info-text mt-8 text-center">参加者と報酬の両方が登録されている必要があります</p>
+  </div>
+</div>
+
+<!-- ==================== Tab 4: Results ==================== -->
+<div id="tab-results" class="tab-content">
+  <div id="no-result" class="card text-center">
+    <p style="color:var(--cs);padding:30px 0">まだ抽選が実行されていません</p>
+  </div>
+
+  <div id="result-area" class="hidden">
+    <div class="card">
+      <h3>抽選結果</h3>
+      <div class="seed-display" id="result-seed"></div>
+      <p class="info-text text-center">このシード値で結果を再現・検証できます</p>
+      <div class="mt-16 text-center">
+        <button class="btn btn-blue btn-sm" onclick="verifyCurrentResult()">結果を検証</button>
+        <span id="verify-result" style="margin-left:10px;font-size:0.85rem"></span>
+      </div>
+    </div>
+
+    <!-- Share card for screenshot -->
+    <div class="card">
+      <h3>共有用カード</h3>
+      <p class="info-text mb-8">以下のカードをスクリーンショットで共有できます。</p>
+      <div id="share-card-container"></div>
+    </div>
+
+    <div class="card">
+      <h3>当選者一覧</h3>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>#</th><th>当選者</th><th>報酬</th><th>Tier</th><th>数量</th><th>確率</th></tr></thead>
+          <tbody id="result-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>配布チェックリスト</h3>
+      <div id="checklist"></div>
+    </div>
+
+    <div class="card">
+      <h3>エクスポート</h3>
+      <div class="flex-between export-btns">
+        <button class="btn btn-sm" onclick="downloadCSV()">CSV出力</button>
+        <button class="btn btn-sm" onclick="downloadJSON()">JSON出力</button>
+        <button class="btn btn-sm" onclick="copyChecklist()">チェックリストをコピー</button>
+        <button class="btn btn-blue btn-sm" onclick="copyShareText()">共有用テキストコピー</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lottery Animation Overlay -->
+<div class="lottery-overlay" id="lottery-overlay">
+  <div id="lottery-anim-slot" class="slot-machine">
+    <div class="slot-label">DRAWING...</div>
+    <div class="slot-reels" id="slot-reels">
+      <div class="slot-reel" id="reel-0"><div class="slot-reel-inner"></div></div>
+      <div class="slot-reel" id="reel-1"><div class="slot-reel-inner"></div></div>
+      <div class="slot-reel" id="reel-2"><div class="slot-reel-inner"></div></div>
+    </div>
+    <div class="slot-result-text" id="slot-result-text">抽選完了!</div>
+  </div>
+  <div id="lottery-anim-results" class="hidden" style="max-height:60vh;overflow-y:auto;padding:0 16px;width:100%;max-width:540px"></div>
+  <button class="btn mt-16 hidden" id="overlay-close-btn" onclick="closeLotteryOverlay()">結果を見る</button>
+</div>
+
+<!-- Particle container -->
+<div class="particle-container hidden" id="particle-container"></div>
+
+<script>
+// ======================== State ========================
+let participants = [];
+let rewards = [];
+let lastResult = null;
+let participantSortState = { key: null, asc: true };
+
+// ======================== ID gen ========================
+let _idCounter = 0;
+function uid() { return 'id_' + Date.now().toString(36) + '_' + (++_idCounter); }
+
+// ======================== Tabs ========================
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    updateLotteryCounts();
+  });
+});
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ======================== Participants ========================
+function addParticipant() {
+  var name = document.getElementById('p-name').value.trim();
+  var kills = parseInt(document.getElementById('p-kills').value) || 0;
+  var score = parseInt(document.getElementById('p-score').value) || 0;
+  var days = parseInt(document.getElementById('p-days').value) || 0;
+  if (!name) { alert('名前を入力してください'); return; }
+  if (kills < 0) kills = 0;
+  if (score < 0) score = 0;
+  if (days < 0) days = 0;
+  participants.push({ id: uid(), name: name, kills: kills, score: score, daysActive: days });
+  document.getElementById('p-name').value = '';
+  document.getElementById('p-kills').value = '';
+  document.getElementById('p-score').value = '';
+  document.getElementById('p-days').value = '';
+  document.getElementById('p-name').focus();
+  renderParticipants();
+}
+
+function removeParticipant(id) {
+  participants = participants.filter(function(p) { return p.id !== id; });
+  renderParticipants();
+}
+
+function clearParticipants() {
+  if (!confirm('全参加者を削除しますか？')) return;
+  participants = [];
+  renderParticipants();
+}
+
+function getSortedParticipants() {
+  var sortVal = document.getElementById('p-sort').value;
+  var sorted = participants.slice();
+  switch (sortVal) {
+    case 'name-asc':
+      sorted.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      break;
+    case 'name-desc':
+      sorted.sort(function(a, b) { return b.name.localeCompare(a.name); });
+      break;
+    case 'kills-desc':
+      sorted.sort(function(a, b) { return b.kills - a.kills; });
+      break;
+    case 'kills-asc':
+      sorted.sort(function(a, b) { return a.kills - b.kills; });
+      break;
+    case 'score-desc':
+      sorted.sort(function(a, b) { return b.score - a.score; });
+      break;
+    case 'score-asc':
+      sorted.sort(function(a, b) { return a.score - b.score; });
+      break;
+    default:
+      break;
+  }
+  return sorted;
+}
+
+function sortParticipantsBy(key) {
+  var select = document.getElementById('p-sort');
+  var currentVal = select.value;
+  var map = {
+    name: ['name-asc', 'name-desc'],
+    kills: ['kills-desc', 'kills-asc'],
+    score: ['score-desc', 'score-asc'],
+    days: ['score-desc', 'score-asc'] // fallback — days doesn't have dedicated sort, use score
+  };
+  // For days, we reuse score logic; let's add proper days sorting
+  if (key === 'days') {
+    if (currentVal === 'days-desc') {
+      select.value = 'days-asc';
+    } else {
+      // Add days options dynamically if not present
+      if (!select.querySelector('option[value="days-desc"]')) {
+        var opt1 = document.createElement('option');
+        opt1.value = 'days-desc';
+        opt1.textContent = '日数 多い順';
+        select.appendChild(opt1);
+        var opt2 = document.createElement('option');
+        opt2.value = 'days-asc';
+        opt2.textContent = '日数 少ない順';
+        select.appendChild(opt2);
+      }
+      select.value = 'days-desc';
+    }
+    renderParticipants();
+    return;
+  }
+  var pair = map[key];
+  if (!pair) return;
+  if (currentVal === pair[0]) {
+    select.value = pair[1];
+  } else {
+    select.value = pair[0];
+  }
+  renderParticipants();
+}
+
+function renderParticipants() {
+  var tbody = document.getElementById('p-table');
+  document.getElementById('p-count').textContent = participants.length;
+  if (participants.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--cs);padding:20px">参加者がいません</td></tr>';
+    return;
+  }
+  var sorted = getSortedParticipants();
+  tbody.innerHTML = sorted.map(function(p) {
+    return '<tr>' +
+      '<td>' + esc(p.name) + '</td>' +
+      '<td>' + p.kills.toLocaleString() + '</td>' +
+      '<td>' + p.score.toLocaleString() + '</td>' +
+      '<td>' + p.daysActive + '</td>' +
+      '<td><button class="btn btn-danger btn-sm" onclick="removeParticipant(\'' + p.id + '\')" style="padding:3px 10px;font-size:0.75rem">削除</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function loadCSV(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var lines = e.target.result.split(/\r?\n/).filter(function(l) { return l.trim(); });
+    var startIdx = 0;
+    // Check if first line is header
+    if (lines.length > 0) {
+      var first = lines[0].split(',');
+      if (first.length >= 4 && isNaN(parseInt(first[1]))) startIdx = 1;
+    }
+    for (var i = startIdx; i < lines.length; i++) {
+      var cols = lines[i].split(',').map(function(c) { return c.trim().replace(/^"|"$/g, ''); });
+      if (cols.length < 4) continue;
+      participants.push({
+        id: uid(),
+        name: cols[0],
+        kills: parseInt(cols[1]) || 0,
+        score: parseInt(cols[2]) || 0,
+        daysActive: parseInt(cols[3]) || 0,
+      });
+    }
+    renderParticipants();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function loadSampleData() {
+  var samples = [
+    { name: 'IceWolf', kills: 1520, score: 48000, daysActive: 7 },
+    { name: 'FrostKing', kills: 2100, score: 62000, daysActive: 7 },
+    { name: 'SnowFury', kills: 890, score: 31000, daysActive: 6 },
+    { name: 'BlizzardX', kills: 1800, score: 55000, daysActive: 7 },
+    { name: 'ArcticBear', kills: 450, score: 18000, daysActive: 5 },
+    { name: 'TundraHawk', kills: 1200, score: 39000, daysActive: 7 },
+    { name: 'GlacierZ', kills: 670, score: 24000, daysActive: 4 },
+    { name: 'PolarStar', kills: 320, score: 12000, daysActive: 3 },
+    { name: 'WinterEdge', kills: 980, score: 35000, daysActive: 6 },
+    { name: 'StormIce', kills: 1650, score: 51000, daysActive: 7 },
+    { name: 'FreezeFlame', kills: 550, score: 20000, daysActive: 5 },
+    { name: 'ColdSteel', kills: 1400, score: 42000, daysActive: 6 },
+  ];
+  samples.forEach(function(s) { participants.push({ id: uid(), name: s.name, kills: s.kills, score: s.score, daysActive: s.daysActive }); });
+  renderParticipants();
+}
+
+// ======================== Rewards ========================
+function addReward() {
+  var name = document.getElementById('r-name').value.trim();
+  var qty = parseInt(document.getElementById('r-qty').value) || 1;
+  var tier = document.getElementById('r-tier').value;
+  if (!name) { alert('報酬名を入力してください'); return; }
+  if (qty < 1) qty = 1;
+  rewards.push({ id: uid(), name: name, quantity: qty, tier: tier });
+  document.getElementById('r-name').value = '';
+  document.getElementById('r-qty').value = '1';
+  document.getElementById('r-name').focus();
+  renderRewards();
+}
+
+function removeReward(id) {
+  rewards = rewards.filter(function(r) { return r.id !== id; });
+  renderRewards();
+}
+
+function clearRewards() {
+  if (!confirm('全報酬を削除しますか？')) return;
+  rewards = [];
+  renderRewards();
+}
+
+function moveReward(id, direction) {
+  var idx = rewards.findIndex(function(r) { return r.id === id; });
+  if (idx < 0) return;
+  var newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= rewards.length) return;
+  var temp = rewards[idx];
+  rewards[idx] = rewards[newIdx];
+  rewards[newIdx] = temp;
+  renderRewards();
+}
+
+function renderRewards() {
+  var tbody = document.getElementById('r-table');
+  document.getElementById('r-count').textContent = rewards.length;
+  if (rewards.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--cs);padding:20px">報酬がありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rewards.map(function(r, i) {
+    return '<tr class="reward-row" draggable="true" data-reward-id="' + r.id + '">' +
+      '<td>' +
+        '<span class="reorder-btns">' +
+          '<button onclick="moveReward(\'' + r.id + '\', -1)" title="上へ"' + (i === 0 ? ' disabled style="opacity:0.3"' : '') + '>&#9650;</button>' +
+          '<button onclick="moveReward(\'' + r.id + '\', 1)" title="下へ"' + (i === rewards.length - 1 ? ' disabled style="opacity:0.3"' : '') + '>&#9660;</button>' +
+        '</span>' +
+        '<span style="color:var(--cs);font-size:0.75rem">' + (i + 1) + '</span>' +
+      '</td>' +
+      '<td>' + esc(r.name) + '</td>' +
+      '<td><span class="tier-badge tier-' + r.tier + '">' + r.tier + '</span></td>' +
+      '<td>' + r.quantity + '</td>' +
+      '<td><button class="btn btn-danger btn-sm" onclick="removeReward(\'' + r.id + '\')" style="padding:3px 10px;font-size:0.75rem">削除</button></td>' +
+    '</tr>';
+  }).join('');
+  initRewardDragDrop();
+}
+
+// Drag & Drop for rewards
+function initRewardDragDrop() {
+  var rows = document.querySelectorAll('.reward-row[draggable="true"]');
+  var draggedId = null;
+  rows.forEach(function(row) {
+    row.addEventListener('dragstart', function(e) {
+      draggedId = row.dataset.rewardId;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedId);
+    });
+    row.addEventListener('dragend', function() {
+      row.classList.remove('dragging');
+      document.querySelectorAll('.reward-row.drag-over').forEach(function(r) { r.classList.remove('drag-over'); });
+    });
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', function() {
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      var fromId = e.dataTransfer.getData('text/plain');
+      var toId = row.dataset.rewardId;
+      if (fromId === toId) return;
+      var fromIdx = rewards.findIndex(function(r) { return r.id === fromId; });
+      var toIdx = rewards.findIndex(function(r) { return r.id === toId; });
+      if (fromIdx < 0 || toIdx < 0) return;
+      var item = rewards.splice(fromIdx, 1)[0];
+      rewards.splice(toIdx, 0, item);
+      renderRewards();
+    });
+  });
+}
+
+function loadSampleRewards() {
+  var samples = [
+    { name: '英雄の欠片x50', quantity: 1, tier: 'S' },
+    { name: '伝説装備箱', quantity: 1, tier: 'S' },
+    { name: 'スピードアップ(8h)x10', quantity: 2, tier: 'A' },
+    { name: 'リソース箱(大)', quantity: 3, tier: 'A' },
+    { name: 'ダイヤx500', quantity: 3, tier: 'A' },
+    { name: 'スタミナ薬x5', quantity: 5, tier: 'B' },
+    { name: 'リソース箱(小)', quantity: 5, tier: 'B' },
+  ];
+  samples.forEach(function(s) { rewards.push({ id: uid(), name: s.name, quantity: s.quantity, tier: s.tier }); });
+  renderRewards();
+}
+
+// ======================== Weights ========================
+function updateWeights() {
+  var k = parseInt(document.getElementById('w-kills').value);
+  var s = parseInt(document.getElementById('w-score').value);
+  var d = parseInt(document.getElementById('w-days').value);
+  var b = parseInt(document.getElementById('w-base').value);
+  var total = k + s + d + b || 1;
+  var nk = k / total, ns = s / total, nd = d / total, nb = b / total;
+  document.getElementById('w-kills-val').textContent = nk.toFixed(2);
+  document.getElementById('w-score-val').textContent = ns.toFixed(2);
+  document.getElementById('w-days-val').textContent = nd.toFixed(2);
+  document.getElementById('w-base-val').textContent = nb.toFixed(2);
+
+  var bar = document.getElementById('weight-bar');
+  bar.innerHTML =
+    '<div style="width:' + (nk*100) + '%;background:var(--atk)">' + (nk > 0.08 ? 'キル' : '') + '</div>' +
+    '<div style="width:' + (ns*100) + '%;background:var(--def)">' + (ns > 0.08 ? 'スコア' : '') + '</div>' +
+    '<div style="width:' + (nd*100) + '%;background:var(--tierB)">' + (nd > 0.08 ? '日数' : '') + '</div>' +
+    '<div style="width:' + (nb*100) + '%;background:var(--gold)">' + (nb > 0.08 ? 'ベース' : '') + '</div>';
+}
+
+function getWeightConfig() {
+  var k = parseInt(document.getElementById('w-kills').value);
+  var s = parseInt(document.getElementById('w-score').value);
+  var d = parseInt(document.getElementById('w-days').value);
+  var b = parseInt(document.getElementById('w-base').value);
+  var total = k + s + d + b || 1;
+  return { kills: k/total, score: s/total, daysActive: d/total, base: b/total };
+}
+
+function generateRandomSeed() {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  var result = '';
+  for (var i = 0; i < 16; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  document.getElementById('seed-input').value = result;
+}
+
+function updateLotteryCounts() {
+  var pc = document.getElementById('l-pcount');
+  var rc = document.getElementById('l-rcount');
+  if (pc) pc.textContent = participants.length;
+  if (rc) rc.textContent = rewards.length;
+}
+
+// ======================== Lottery Engine (inline) ========================
+function hashString(str) {
+  var h = 0;
+  for (var i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+function mulberry32(seed) {
+  var s = seed | 0;
+  return function() {
+    s = (s + 0x6d2b79f5) | 0;
+    var t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createRng(seed) { return mulberry32(hashString(seed)); }
+
+function normalizeArr(values) {
+  var max = Math.max.apply(null, values);
+  if (max === 0) return values.map(function() { return 0; });
+  return values.map(function(v) { return v / max; });
+}
+
+function calcWeight(p, all, weights) {
+  var nk = normalizeArr(all.map(function(x) { return x.kills; }));
+  var ns = normalizeArr(all.map(function(x) { return x.score; }));
+  var nd = normalizeArr(all.map(function(x) { return x.daysActive; }));
+  var idx = all.indexOf(p);
+  if (idx === -1) return 0;
+  return nk[idx] * weights.kills + ns[idx] * weights.score + nd[idx] * weights.daysActive + weights.base;
+}
+
+function weightedSelect(parts, weights, rng, exclude) {
+  var eligible = [];
+  for (var i = 0; i < parts.length; i++) {
+    if (!exclude.has(parts[i].id)) eligible.push({ p: parts[i], w: weights[i] });
+  }
+  if (!eligible.length) return null;
+  var total = eligible.reduce(function(s, e) { return s + e.w; }, 0);
+  if (total === 0) return null;
+  var r = rng() * total;
+  var cum = 0;
+  for (var j = 0; j < eligible.length; j++) {
+    cum += eligible[j].w;
+    if (r <= cum) return { participant: eligible[j].p, weight: eligible[j].w, probability: eligible[j].w / total };
+  }
+  var last = eligible[eligible.length - 1];
+  return { participant: last.p, weight: last.w, probability: last.w / total };
+}
+
+function runLotteryEngine(parts, rews, config) {
+  var seed = config.seed;
+  if (!seed) {
+    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    seed = '';
+    for (var i = 0; i < 16; i++) seed += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  var rng = createRng(seed);
+  var wts = parts.map(function(p) { return calcWeight(p, parts, config.weights); });
+  var tierOrder = { S: 0, A: 1, B: 2 };
+  var sorted = rews.slice().sort(function(a, b) { return tierOrder[a.tier] - tierOrder[b.tier]; });
+  var winners = [];
+  var assigned = new Set();
+
+  for (var ri = 0; ri < sorted.length; ri++) {
+    var reward = sorted[ri];
+    var selected;
+    if (reward.tier === 'S') {
+      var boosted = wts.map(function(w) { return w * w; });
+      selected = weightedSelect(parts, boosted, rng, assigned);
+    } else if (reward.tier === 'A') {
+      selected = weightedSelect(parts, wts, rng, assigned);
+    } else {
+      var equal = parts.map(function() { return 1; });
+      selected = weightedSelect(parts, equal, rng, assigned);
+    }
+    if (selected) {
+      winners.push({ participant: selected.participant, weight: selected.weight, probability: selected.probability, reward: reward });
+      assigned.add(selected.participant.id);
+    }
+  }
+
+  return { winners: winners, seed: seed, timestamp: Date.now(), config: { weights: config.weights, seed: seed } };
+}
+
+// ======================== Slot Machine Animation ========================
+var slotEmojis = ['🎖', '⚔️', '🛡️', '🏆', '💎', '🔥', '⭐', '👑', '🎯', '🗡️'];
+
+function startSlotAnimation() {
+  var reels = document.querySelectorAll('.slot-reel');
+  reels.forEach(function(reel) {
+    var inner = reel.querySelector('.slot-reel-inner');
+    // Fill with random emojis
+    var html = '';
+    for (var i = 0; i < 20; i++) {
+      var emoji = slotEmojis[Math.floor(Math.random() * slotEmojis.length)];
+      html += '<div class="slot-reel-item">' + emoji + '</div>';
+    }
+    inner.innerHTML = html;
+    reel.classList.add('spinning');
+  });
+  document.getElementById('slot-result-text').classList.remove('visible');
+}
+
+function stopSlotAnimation(callback) {
+  var reels = document.querySelectorAll('.slot-reel');
+  var finalEmojis = ['🏆', '👑', '💎'];
+  reels.forEach(function(reel, idx) {
+    setTimeout(function() {
+      reel.classList.remove('spinning');
+      var inner = reel.querySelector('.slot-reel-inner');
+      inner.innerHTML = '<div class="slot-reel-item">' + finalEmojis[idx] + '</div>';
+      inner.style.transform = 'translateY(0)';
+      if (idx === reels.length - 1) {
+        setTimeout(function() {
+          document.getElementById('slot-result-text').classList.add('visible');
+          if (callback) callback();
+        }, 300);
+      }
+    }, 300 + idx * 400);
+  });
+}
+
+// ======================== Particle Effects ========================
+function spawnParticles() {
+  var container = document.getElementById('particle-container');
+  container.classList.remove('hidden');
+  container.innerHTML = '';
+  var colors = ['#ff6b6b', '#ffa726', '#66bb6a', '#f0c040', '#3a8fd4', '#e040fb', '#ff4081'];
+  for (var i = 0; i < 80; i++) {
+    var el = document.createElement('div');
+    var isConfetti = Math.random() > 0.5;
+    el.className = isConfetti ? 'confetti' : 'particle';
+    el.style.left = (Math.random() * 100) + '%';
+    el.style.top = '-20px';
+    el.style.background = colors[Math.floor(Math.random() * colors.length)];
+    el.style.animationDuration = (2 + Math.random() * 3) + 's';
+    el.style.animationDelay = (Math.random() * 1.5) + 's';
+    if (isConfetti) {
+      el.style.width = (6 + Math.random() * 8) + 'px';
+      el.style.height = (8 + Math.random() * 10) + 'px';
+    } else {
+      var size = 4 + Math.random() * 8;
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+    }
+    container.appendChild(el);
+  }
+  // Clean up after animation
+  setTimeout(function() {
+    container.classList.add('hidden');
+    container.innerHTML = '';
+  }, 5000);
+}
+
+// ======================== Execute Lottery ========================
+function executeLottery() {
+  if (participants.length === 0) { alert('参加者を登録してください'); return; }
+  if (rewards.length === 0) { alert('報酬を登録してください'); return; }
+  if (rewards.length > participants.length) { alert('報酬数が参加者数を超えています。報酬を減らすか参加者を増やしてください。'); return; }
+
+  var config = {
+    weights: getWeightConfig(),
+    seed: document.getElementById('seed-input').value.trim() || undefined,
+  };
+
+  // Show animation overlay
+  var overlay = document.getElementById('lottery-overlay');
+  var slotEl = document.getElementById('lottery-anim-slot');
+  var resultsEl = document.getElementById('lottery-anim-results');
+  var closeBtn = document.getElementById('overlay-close-btn');
+
+  overlay.classList.add('active');
+  slotEl.classList.remove('hidden');
+  resultsEl.classList.add('hidden');
+  closeBtn.classList.add('hidden');
+
+  // Start slot machine spin
+  startSlotAnimation();
+
+  // Run lottery after animation delay
+  setTimeout(function() {
+    lastResult = runLotteryEngine(participants, rewards, config);
+    // Update seed input with the actually used seed
+    document.getElementById('seed-input').value = lastResult.seed;
+
+    stopSlotAnimation(function() {
+      // Spawn particles for celebration
+      spawnParticles();
+
+      // Show reveal animation
+      slotEl.classList.add('hidden');
+      resultsEl.classList.remove('hidden');
+      closeBtn.classList.remove('hidden');
+
+      var html = '';
+      var tierOrder = { S: 0, A: 1, B: 2 };
+      var sorted = lastResult.winners.slice().sort(function(a, b) { return tierOrder[a.reward.tier] - tierOrder[b.reward.tier]; });
+
+      sorted.forEach(function(w, i) {
+        html += '<div class="winner-reveal-card" style="animation-delay:' + (i * 0.2) + 's;margin-bottom:14px">' +
+          '<span class="tier-badge tier-' + w.reward.tier + '" style="font-size:0.9rem;padding:3px 12px">' + w.reward.tier + '</span>' +
+          '<div class="reveal-name">' + esc(w.participant.name) + '</div>' +
+          '<div class="reveal-reward">' + esc(w.reward.name) + ' x ' + w.reward.quantity + '</div>' +
+          '<div class="info-text">確率: ' + (w.probability * 100).toFixed(2) + '%</div>' +
+        '</div>';
+      });
+
+      resultsEl.innerHTML = html;
+      renderResults();
+    });
+  }, 1800);
+}
+
+function closeLotteryOverlay() {
+  document.getElementById('lottery-overlay').classList.remove('active');
+  switchTab('results');
+}
+
+// ======================== Results Rendering ========================
+function renderResults() {
+  if (!lastResult) return;
+  document.getElementById('no-result').classList.add('hidden');
+  document.getElementById('result-area').classList.remove('hidden');
+  document.getElementById('result-seed').textContent = lastResult.seed;
+
+  var tbody = document.getElementById('result-table');
+  tbody.innerHTML = lastResult.winners.map(function(w, i) {
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + esc(w.participant.name) + '</td>' +
+      '<td>' + esc(w.reward.name) + '</td>' +
+      '<td><span class="tier-badge tier-' + w.reward.tier + '">' + w.reward.tier + '</span></td>' +
+      '<td>' + w.reward.quantity + '</td>' +
+      '<td>' + (w.probability * 100).toFixed(2) + '%</td>' +
+    '</tr>';
+  }).join('');
+
+  // Checklist
+  var cl = document.getElementById('checklist');
+  cl.innerHTML = lastResult.winners.map(function(w, i) {
+    return '<div class="check-item" id="check-' + i + '">' +
+      '<input type="checkbox" onchange="toggleCheck(' + i + ')">' +
+      '<span>' + esc(w.participant.name) + ' -> ' + esc(w.reward.name) + '(' + w.reward.tier + ') x ' + w.reward.quantity + '</span>' +
+    '</div>';
+  }).join('');
+
+  document.getElementById('verify-result').textContent = '';
+
+  // Render share card
+  renderShareCard();
+}
+
+function renderShareCard() {
+  if (!lastResult) return;
+  var container = document.getElementById('share-card-container');
+  var tierOrder = { S: 0, A: 1, B: 2 };
+  var sorted = lastResult.winners.slice().sort(function(a, b) { return tierOrder[a.reward.tier] - tierOrder[b.reward.tier]; });
+  var date = new Date(lastResult.timestamp);
+  var dateStr = date.getFullYear() + '/' + String(date.getMonth() + 1).padStart(2, '0') + '/' + String(date.getDate()).padStart(2, '0') + ' ' + String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+
+  var html = '<div class="share-card">' +
+    '<div class="share-card-header">' +
+      '<h2>SVS REWARD LOTTERY</h2>' +
+      '<div class="share-subtitle">Whiteout Survival - ' + dateStr + '</div>' +
+    '</div>' +
+    '<div class="share-card-divider"></div>';
+
+  sorted.forEach(function(w, i) {
+    html += '<div class="share-card-item tier-' + w.reward.tier + '-item">' +
+      '<div class="share-rank">' + w.reward.tier + '</div>' +
+      '<div class="share-info">' +
+        '<div class="share-player">' + esc(w.participant.name) + '</div>' +
+        '<div class="share-reward-name">' + esc(w.reward.name) + ' x ' + w.reward.quantity + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  html += '<div class="share-card-divider"></div>' +
+    '<div class="share-card-footer">' +
+      '<div class="share-seed">Seed: ' + esc(lastResult.seed) + '</div>' +
+    '</div>' +
+  '</div>';
+
+  container.innerHTML = html;
+}
+
+function toggleCheck(idx) {
+  var el = document.getElementById('check-' + idx);
+  var cb = el.querySelector('input[type="checkbox"]');
+  el.classList.toggle('done', cb.checked);
+}
+
+function verifyCurrentResult() {
+  if (!lastResult) return;
+  var reproduced = runLotteryEngine(participants, rewards, {
+    weights: lastResult.config.weights,
+    seed: lastResult.seed,
+  });
+  var match = reproduced.winners.length === lastResult.winners.length;
+  if (match) {
+    for (var i = 0; i < reproduced.winners.length; i++) {
+      if (reproduced.winners[i].participant.id !== lastResult.winners[i].participant.id ||
+          reproduced.winners[i].reward.id !== lastResult.winners[i].reward.id) {
+        match = false;
+        break;
+      }
+    }
+  }
+  var el = document.getElementById('verify-result');
+  if (match) {
+    el.style.color = 'var(--tierB)';
+    el.textContent = '検証OK: 結果が再現されました';
+  } else {
+    el.style.color = 'var(--atk)';
+    el.textContent = '検証NG: 結果が一致しません（参加者・報酬が変更された可能性）';
+  }
+}
+
+// ======================== Export ========================
+function downloadCSV() {
+  if (!lastResult) return;
+  var header = 'プレイヤー名,プレイヤーID,報酬名,Tier,数量,当選確率,配布済み';
+  var rows = lastResult.winners.map(function(w) {
+    return ['"' + w.participant.name + '"', '"' + w.participant.id + '"', '"' + w.reward.name + '"',
+     w.reward.tier, w.reward.quantity, (w.probability * 100).toFixed(2) + '%', 'FALSE'].join(',');
+  });
+  downloadFile(header + '\n' + rows.join('\n'), 'svs-lottery-result.csv', 'text/csv');
+}
+
+function downloadJSON() {
+  if (!lastResult) return;
+  downloadFile(JSON.stringify(lastResult, null, 2), 'svs-lottery-result.json', 'application/json');
+}
+
+function downloadFile(content, filename, mime) {
+  var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function copyChecklist() {
+  if (!lastResult) return;
+  var lines = [
+    'SVS褒賞 配布チェックリスト',
+    'シード値: ' + lastResult.seed,
+    '生成日時: ' + new Date(lastResult.timestamp).toLocaleString('ja-JP'),
+    '---'
+  ];
+  lastResult.winners.forEach(function(w) {
+    lines.push('[ ] ' + w.participant.name + ' -> ' + w.reward.name + '(' + w.reward.tier + ') x ' + w.reward.quantity);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(function() { alert('コピーしました'); });
+}
+
+function copyShareText() {
+  if (!lastResult) return;
+  var lines = [
+    '=== SVS褒賞 抽選結果 ==='
+  ];
+  lines.push('');
+  lastResult.winners.forEach(function(w, i) {
+    lines.push((i + 1) + '. [' + w.reward.tier + '] ' + w.participant.name + ' -> ' + w.reward.name + ' x ' + w.reward.quantity + ' (' + (w.probability * 100).toFixed(2) + '%)');
+  });
+  lines.push('');
+  lines.push('シード値: ' + lastResult.seed);
+  lines.push('※ 同じシード値・同じ参加者/報酬データで結果を検証できます');
+  navigator.clipboard.writeText(lines.join('\n')).then(function() { alert('コピーしました'); });
+}
+
+// ======================== Utility ========================
+function esc(str) {
+  var d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ======================== Init ========================
+renderParticipants();
+renderRewards();
+updateWeights();
+</script>
+</body>
+</html>

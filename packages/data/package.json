@@ -1,0 +1,16 @@
+{
+  "name": "@wos-tools/data",
+  "version": "1.0.0",
+  "description": "WOS battle simulator data definitions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "files": ["dist"],
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

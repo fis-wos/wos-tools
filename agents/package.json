@@ -1,0 +1,22 @@
+{
+  "name": "@wos-tools/agents",
+  "version": "1.0.0",
+  "description": "WOS data verification agent team - investigator, critic, evaluator",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "verify": "tsx examples/verify-hero.ts",
+    "optimize": "tsx examples/optimize-rally.ts",
+    "dry-run": "tsx examples/dry-run.ts"
+  },
+  "files": ["dist"],
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

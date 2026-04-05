@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #0d0d0d;
+  --color-foreground: #ededed;
+  --color-wos-dark: #0d0d0d;
+  --color-wos-panel: #1a1a2e;
+  --color-wos-panel-light: #25253e;
+  --color-wos-border: #2a2a4a;
+  --color-gold: #d4a843;
+  --color-gold-light: #f0d060;
+  --color-gold-dark: #a07830;
+  --color-ice-blue: #7ec8e3;
+  --color-ice-blue-light: #a0e0f0;
+  --color-atk-red: #e04040;
+  --color-atk-red-light: #ff6060;
+  --color-def-blue: #4080e0;
+  --color-def-blue-light: #60a0ff;
+  --color-shield-blue: #4a90d9;
+  --color-spear-red: #d94a4a;
+  --color-bow-green: #4ad94a;
+  --font-sans: "Noto Sans JP", Arial, Helvetica, sans-serif;
+}
+
+body {
+  background: var(--color-wos-dark);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Gold gradient text utility */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #f0d060, #d4a843, #a07830);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Panel glow effect */
+.panel-glow {
+  box-shadow: 0 0 15px rgba(212, 168, 67, 0.1), inset 0 1px 0 rgba(212, 168, 67, 0.1);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a5e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a6e;
+}
