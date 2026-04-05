@@ -21,6 +21,7 @@ import {
   type TroopCount,
   runSimulation,
 } from '@/lib/engine/battle-engine';
+import { supabase } from '@/lib/supabase';
 
 // ── Constants ──
 
@@ -669,7 +670,7 @@ export default function SimulatorPage() {
       setIsSimulating(true);
 
       // Use setTimeout to let UI update before heavy computation
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const atkF = formations.atk;
           const defF = formations.def;
@@ -697,6 +698,40 @@ export default function SimulatorPage() {
           });
 
           setSimResult(result);
+
+          // Supabaseに保存
+          try {
+            const atkLeaderIds = atkF.leaders.filter(Boolean).map(h => h!.id);
+            const defLeaderIds = defF.leaders.filter(Boolean).map(h => h!.id);
+            const winner = result.atkWins > result.defWins ? 'a' : result.defWins > result.atkWins ? 'd' : 'draw';
+            await supabase.from('sim_history').insert({
+              times: runs,
+              winner,
+              a_wins: result.atkWins,
+              d_wins: result.defWins,
+              draws: result.draws,
+              a_win_rate: parseFloat(((result.atkWins / runs) * 100).toFixed(1)),
+              avg_turns: parseFloat(result.avgTurns.toFixed(1)),
+              a_troops: aTroops.shield + aTroops.spear + aTroops.bow,
+              d_troops: dTroops.shield + dTroops.spear + dTroops.bow,
+              a_leaders: atkLeaderIds,
+              d_leaders: defLeaderIds,
+              a_riders: atkF.riders.map(h => h.id),
+              d_riders: defF.riders.map(h => h.id),
+              a_atk: parseFloat((aHeroStats[0]?.atk || 0).toFixed(0)),
+              a_leth: parseFloat((aHeroStats[0]?.leth || 0).toFixed(0)),
+              d_atk: parseFloat((dHeroStats[0]?.atk || 0).toFixed(0)),
+              d_leth: parseFloat((dHeroStats[0]?.leth || 0).toFixed(0)),
+              a_residual: parseFloat(((result.results[result.results.length - 1]?.aTroopsLeft.shield || 0) +
+                (result.results[result.results.length - 1]?.aTroopsLeft.spear || 0) +
+                (result.results[result.results.length - 1]?.aTroopsLeft.bow || 0)).toFixed(0)),
+              d_residual: parseFloat(((result.results[result.results.length - 1]?.dTroopsLeft.shield || 0) +
+                (result.results[result.results.length - 1]?.dTroopsLeft.spear || 0) +
+                (result.results[result.results.length - 1]?.dTroopsLeft.bow || 0)).toFixed(0)),
+            });
+          } catch (e) {
+            console.error('Failed to save to Supabase:', e);
+          }
         } finally {
           setIsSimulating(false);
         }

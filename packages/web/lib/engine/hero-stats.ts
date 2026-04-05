@@ -124,21 +124,20 @@ export function calcHeroStats(
   leaders: Array<{ hero: Hero; config: HeroConfig }>,
   isAtk: boolean
 ): TroopStats[] {
-  const stats: TroopStats[] = TROOP_ORDER.map(() => ({
-    atk: 0,
-    def: 0,
-    leth: 0,
-    hp: 0,
-  }));
+  // バトルレポート分析:
+  // - ベースステータス(ATK/DEF/殺傷力/HP)は兵種別に差がある
+  // - しかし兵士0の兵種でもリーダーのスキル効果は全兵種に適用される
+  // - 実装: 全リーダーのステータスを合算して全兵種に適用
+  //   （バトルレポートの兵種別差異は研究/装備/ペット等の外部バフが原因と推定）
+  let totalAtk = 0, totalDef = 0, totalLeth = 0, totalHp = 0;
 
   for (const { hero, config } of leaders) {
     const heroStats = getHeroStats(hero, config);
-    const tIdx = TROOP_ORDER.indexOf(hero.t);
 
-    stats[tIdx].atk += heroStats.atk;
-    stats[tIdx].def += heroStats.def;
-    stats[tIdx].leth += heroStats.leth;
-    stats[tIdx].hp += heroStats.hp;
+    totalAtk += heroStats.atk;
+    totalDef += heroStats.def;
+    totalLeth += heroStats.leth;
+    totalHp += heroStats.hp;
 
     if (hero.gs) {
       const applies =
@@ -147,22 +146,19 @@ export function calcHeroStats(
       if (applies) {
         const bonus = hero.gearBase * (config.gearLv / 30) * 0.5;
         switch (hero.gs.eff) {
-          case 'atk':
-            stats[tIdx].atk += bonus;
-            break;
-          case 'def':
-            stats[tIdx].def += bonus;
-            break;
-          case 'leth':
-            stats[tIdx].leth += bonus;
-            break;
-          case 'hp':
-            stats[tIdx].hp += bonus;
-            break;
+          case 'atk': totalAtk += bonus; break;
+          case 'def': totalDef += bonus; break;
+          case 'leth': totalLeth += bonus; break;
+          case 'hp': totalHp += bonus; break;
         }
       }
     }
   }
 
-  return stats;
+  return TROOP_ORDER.map(() => ({
+    atk: totalAtk,
+    def: totalDef,
+    leth: totalLeth,
+    hp: totalHp,
+  }));
 }
