@@ -84,14 +84,22 @@ interface SideFormation {
   troopTier: TroopTier;
 }
 
+const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number }[] = [
+  { label: '5:0:5', shield: 5, spear: 0, bow: 5 },
+  { label: '5:2:3', shield: 5, spear: 2, bow: 3 },
+  { label: '6:4:0', shield: 6, spear: 4, bow: 0 },
+  { label: '3:4:3', shield: 3, spear: 4, bow: 3 },
+  { label: '均等', shield: 1, spear: 1, bow: 1 },
+];
+
 function emptyFormation(): SideFormation {
   return {
     leaders: [null, null, null],
     riders: [],
     totalTroops: 1800000,
-    shieldRatio: 34,
-    spearRatio: 33,
-    bowRatio: 33,
+    shieldRatio: 5,
+    spearRatio: 0,
+    bowRatio: 5,
     troopTier: 11 as TroopTier,
   };
 }
@@ -131,35 +139,15 @@ function formationToHeroStats(f: SideFormation, isAtk: boolean): TroopStats[] {
   return calcHeroStats(leaderEntries, isAtk);
 }
 
-/** Lock ratios to 100%: when one key changes, redistribute the rest proportionally. */
-function lockTo100(
-  formation: SideFormation,
-  changedKey: RatioKey,
-  newValue: number
-): Partial<SideFormation> {
-  const clamped = Math.max(0, Math.min(100, Math.round(newValue)));
-  const otherKeys = RATIO_KEYS.filter((k) => k !== changedKey);
-  const remain = 100 - clamped;
-  const otherSum = otherKeys.reduce((s, k) => s + formation[k], 0);
-
-  let vals: Record<string, number>;
-  if (otherSum === 0) {
-    // Equal split
-    const half = Math.floor(remain / 2);
-    vals = {
-      [changedKey]: clamped,
-      [otherKeys[0]]: half,
-      [otherKeys[1]]: remain - half,
-    };
-  } else {
-    const v0 = Math.round((formation[otherKeys[0]] / otherSum) * remain);
-    vals = {
-      [changedKey]: clamped,
-      [otherKeys[0]]: v0,
-      [otherKeys[1]]: remain - v0,
-    };
-  }
-  return vals;
+/** Compute normalized percentage for display */
+function normalizeRatio(f: SideFormation): { shield: number; spear: number; bow: number } {
+  const sum = f.shieldRatio + f.spearRatio + f.bowRatio;
+  if (sum === 0) return { shield: 0, spear: 0, bow: 0 };
+  return {
+    shield: Math.round((f.shieldRatio / sum) * 100),
+    spear: Math.round((f.spearRatio / sum) * 100),
+    bow: Math.round((f.bowRatio / sum) * 100),
+  };
 }
 
 // ── Hero Image with Fallback ──
@@ -640,17 +628,30 @@ export default function SimulatorPage() {
     [activeSide]
   );
 
-  // Update ratio with lockTo100
+  // Update ratio directly (no lockTo100 needed)
   const updateRatio = useCallback(
     (key: RatioKey, value: number) => {
-      setFormations((prev) => {
-        const f = prev[activeSide];
-        const patch = lockTo100(f, key, value);
-        return {
-          ...prev,
-          [activeSide]: { ...f, ...patch },
-        };
-      });
+      const clamped = Math.max(0, Math.round(value));
+      setFormations((prev) => ({
+        ...prev,
+        [activeSide]: { ...prev[activeSide], [key]: clamped },
+      }));
+    },
+    [activeSide]
+  );
+
+  // Apply ratio preset
+  const applyRatioPreset = useCallback(
+    (preset: { shield: number; spear: number; bow: number }) => {
+      setFormations((prev) => ({
+        ...prev,
+        [activeSide]: {
+          ...prev[activeSide],
+          shieldRatio: preset.shield,
+          spearRatio: preset.spear,
+          bowRatio: preset.bow,
+        },
+      }));
     },
     [activeSide]
   );
@@ -704,31 +705,56 @@ export default function SimulatorPage() {
             const atkLeaderIds = atkF.leaders.filter(Boolean).map(h => h!.id);
             const defLeaderIds = defF.leaders.filter(Boolean).map(h => h!.id);
             const winner = result.atkWins > result.defWins ? 'a' : result.defWins > result.atkWins ? 'd' : 'draw';
-            await supabase.from('sim_history').insert({
+            const lastRun = result.results[result.results.length - 1];
+
+            const buildSideDetails = (f: SideFormation) => ({
+              leaders: f.leaders.filter(Boolean).map(h => ({ id: h!.id, name: h!.n, type: h!.t })),
+              riders: f.riders.map(h => ({ id: h.id, name: h.n, type: h.t })),
+              troopRatio: { shield: f.shieldRatio, spear: f.spearRatio, bow: f.bowRatio },
+              totalTroops: f.totalTroops,
+              troopTier: f.troopTier,
+            });
+
+            const details = {
+              atkFormation: buildSideDetails(atkF),
+              defFormation: buildSideDetails(defF),
+              results: {
+                atkWins: result.atkWins,
+                defWins: result.defWins,
+                draws: result.draws,
+                avgTurns: Math.round(result.avgTurns * 10) / 10,
+                lastRun: lastRun ? {
+                  aTroopsLeft: lastRun.aTroopsLeft,
+                  dTroopsLeft: lastRun.dTroopsLeft,
+                  aCasualty: lastRun.aCasualty,
+                  dCasualty: lastRun.dCasualty,
+                } : null,
+              },
+            };
+
+            const { error } = await supabase.from('sim_history').insert({
               times: runs,
               winner,
               a_wins: result.atkWins,
               d_wins: result.defWins,
               draws: result.draws,
-              a_win_rate: parseFloat(((result.atkWins / runs) * 100).toFixed(1)),
-              avg_turns: parseFloat(result.avgTurns.toFixed(1)),
+              a_win_rate: Math.round((result.atkWins / runs) * 1000) / 10,
+              avg_turns: Math.round(result.avgTurns * 10) / 10,
               a_troops: aTroops.shield + aTroops.spear + aTroops.bow,
               d_troops: dTroops.shield + dTroops.spear + dTroops.bow,
               a_leaders: atkLeaderIds,
               d_leaders: defLeaderIds,
               a_riders: atkF.riders.map(h => h.id),
               d_riders: defF.riders.map(h => h.id),
-              a_atk: parseFloat((aHeroStats[0]?.atk || 0).toFixed(0)),
-              a_leth: parseFloat((aHeroStats[0]?.leth || 0).toFixed(0)),
-              d_atk: parseFloat((dHeroStats[0]?.atk || 0).toFixed(0)),
-              d_leth: parseFloat((dHeroStats[0]?.leth || 0).toFixed(0)),
-              a_residual: parseFloat(((result.results[result.results.length - 1]?.aTroopsLeft.shield || 0) +
-                (result.results[result.results.length - 1]?.aTroopsLeft.spear || 0) +
-                (result.results[result.results.length - 1]?.aTroopsLeft.bow || 0)).toFixed(0)),
-              d_residual: parseFloat(((result.results[result.results.length - 1]?.dTroopsLeft.shield || 0) +
-                (result.results[result.results.length - 1]?.dTroopsLeft.spear || 0) +
-                (result.results[result.results.length - 1]?.dTroopsLeft.bow || 0)).toFixed(0)),
+              a_atk: Math.round(aHeroStats[0]?.atk || 0),
+              a_leth: Math.round(aHeroStats[0]?.leth || 0),
+              d_atk: Math.round(dHeroStats[0]?.atk || 0),
+              d_leth: Math.round(dHeroStats[0]?.leth || 0),
+              a_residual: lastRun ? (lastRun.aTroopsLeft.shield + lastRun.aTroopsLeft.spear + lastRun.aTroopsLeft.bow) : 0,
+              d_residual: lastRun ? (lastRun.dTroopsLeft.shield + lastRun.dTroopsLeft.spear + lastRun.dTroopsLeft.bow) : 0,
+              details,
             });
+            if (error) console.error('Supabase save error:', error.message, error.details);
           } catch (e) {
             console.error('Failed to save to Supabase:', e);
           }
@@ -1032,7 +1058,7 @@ export default function SimulatorPage() {
 
             {/* Troop ratios */}
             <div>
-              <div className="mb-2 text-xs text-text-muted">兵種比率</div>
+              <div className="mb-2 text-xs text-text-muted">兵種比率（数値入力 → 自動で%に正規化）</div>
               {(['shield', 'spear', 'bow'] as const).map((tt) => {
                 const key: RatioKey =
                   tt === 'shield'
@@ -1040,43 +1066,45 @@ export default function SimulatorPage() {
                     : tt === 'spear'
                       ? 'spearRatio'
                       : 'bowRatio';
+                const pct = normalizeRatio(currentFormation);
+                const pctVal = pct[tt];
                 return (
-                  <div key={tt} className="mb-1 flex items-center gap-2">
+                  <div key={tt} className="mb-1.5 flex items-center gap-2">
                     <span
                       className={`w-6 text-sm font-bold ${TROOP_TEXT_COLORS[tt]}`}
                     >
                       {TROOP_LABELS[tt]}
                     </span>
                     <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={currentFormation[key]}
-                      onChange={(e) =>
-                        updateRatio(key, Number(e.target.value))
-                      }
-                      className="h-2 flex-1 cursor-pointer appearance-none rounded-full"
-                    />
-                    <input
                       type="number"
                       min={0}
-                      max={100}
+                      max={999}
                       value={currentFormation[key]}
                       onChange={(e) =>
                         updateRatio(key, Number(e.target.value))
                       }
-                      className="w-12 rounded border border-wos-border bg-wos-dark px-1 py-0.5 text-right text-xs text-text-primary outline-none focus:border-def-blue/50"
+                      className="w-16 rounded border border-wos-border bg-wos-dark px-2 py-1 text-center text-sm text-text-primary outline-none focus:border-def-blue/50"
                     />
-                    <span className="text-xs text-text-muted">%</span>
+                    <span className="text-xs text-text-muted">→</span>
+                    <span className={`text-xs font-bold ${TROOP_TEXT_COLORS[tt]}`}>
+                      {pctVal}%
+                    </span>
                   </div>
                 );
               })}
-              <div className="text-right text-[10px] text-text-muted">
-                合計:{' '}
-                {currentFormation.shieldRatio +
-                  currentFormation.spearRatio +
-                  currentFormation.bowRatio}
-                %
+              <div className="mt-2">
+                <div className="mb-1 text-[10px] text-text-muted">プリセット</div>
+                <div className="flex flex-wrap gap-1">
+                  {RATIO_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => applyRatioPreset(p)}
+                      className="rounded-md border border-wos-border bg-white/60 px-2 py-1 text-[10px] font-medium text-text-secondary transition-colors hover:bg-gold/10 hover:border-gold/40 hover:text-gold-dark"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

@@ -288,14 +288,40 @@ export async function clearDeadline(): Promise<void> {
 // Simulation History (for admin)
 // ---------------------------------------------------------------------------
 
-interface SimHistoryRow {
+export interface SimHistoryRow {
   id: string;
   created_at: string;
   winner: string;
   trials: number;
   attacker_formation: string;
   defender_formation: string;
+  details?: SimDetails | null;
   [key: string]: unknown;
+}
+
+export interface SimDetails {
+  atkFormation: SimSideDetail;
+  defFormation: SimSideDetail;
+  results: {
+    atkWins: number;
+    defWins: number;
+    draws: number;
+    avgTurns: number;
+    lastRun?: {
+      aTroopsLeft: { shield: number; spear: number; bow: number };
+      dTroopsLeft: { shield: number; spear: number; bow: number };
+      aCasualty: { dead: number; severeWound: number; lightWound: number; survived?: number };
+      dCasualty: { dead: number; severeWound: number; lightWound: number; survived?: number };
+    } | null;
+  };
+}
+
+export interface SimSideDetail {
+  leaders: { id: string; name: string; type: string }[];
+  riders: { id: string; name: string; type: string }[];
+  troopRatio: { shield: number; spear: number; bow: number };
+  totalTroops: number;
+  troopTier: number;
 }
 
 export async function getSimHistory(): Promise<SimHistoryRow[]> {

@@ -19,6 +19,9 @@ import {
   clearResults,
   getSimHistory,
   clearSimHistory,
+  type SimHistoryRow as ApiSimHistoryRow,
+  type SimDetails,
+  type SimSideDetail,
   getDeadline,
   setDeadline as apiSetDeadline,
   clearDeadline as apiClearDeadline,
@@ -63,6 +66,7 @@ interface SimRow {
   trials: number;
   attacker_formation: string;
   defender_formation: string;
+  details?: SimDetails | null;
   [key: string]: unknown;
 }
 
@@ -122,6 +126,9 @@ export default function AdminPage() {
   const [rewards, setRewards] = useState<RewardItem[]>([]);
   const [simHistory, setSimHistory] = useState<SimRow[]>([]);
   const [dbAvailable, setDbAvailable] = useState(true);
+
+  // Sim detail modal
+  const [selectedSim, setSelectedSim] = useState<SimRow | null>(null);
 
   // Counter analyses
   const [counterAnalyses, setCounterAnalyses] = useState<CounterAnalysis[]>([]);
@@ -423,6 +430,25 @@ export default function AdminPage() {
     }
   }, []);
 
+  const handleOpenInSimulator = useCallback((sim: SimRow) => {
+    if (!sim.details) return;
+    const d = sim.details;
+    const buildSide = (side: SimSideDetail) => ({
+      leaders: side.leaders.map(l => l.id),
+      riders: side.riders.map(r => r.id),
+      shieldRatio: side.troopRatio.shield,
+      spearRatio: side.troopRatio.spear,
+      bowRatio: side.troopRatio.bow,
+      totalTroops: side.totalTroops,
+    });
+    const preset = {
+      atk: buildSide(d.atkFormation),
+      def: buildSide(d.defFormation),
+    };
+    localStorage.setItem('wos_sim_preset', JSON.stringify(preset));
+    window.open('/simulator', '_blank');
+  }, []);
+
   const handleExportSimCSV = useCallback(() => {
     const header = '日時,勝者,試行回数,攻撃編成,防御編成';
     const rows = simHistory.map(
@@ -607,22 +633,162 @@ export default function AdminPage() {
                     <th className="px-3 py-2 text-center">試行回数</th>
                     <th className="px-3 py-2">攻撃編成</th>
                     <th className="px-3 py-2">防御編成</th>
+                    <th className="px-3 py-2 text-center">詳細</th>
                   </tr>
                 </thead>
                 <tbody>
                   {simHistory.map((s) => (
-                    <tr key={s.id} className="border-t border-wos-border/50">
+                    <tr
+                      key={s.id}
+                      className="border-t border-wos-border/50 cursor-pointer hover:bg-wos-dark/50 transition-colors"
+                      onClick={() => setSelectedSim(s)}
+                    >
                       <td className="px-3 py-2 text-xs text-text-muted">{formatDate(s.created_at)}</td>
                       <td className="px-3 py-2 font-medium text-text-primary">{s.winner}</td>
                       <td className="px-3 py-2 text-center text-text-secondary">{s.trials}</td>
                       <td className="max-w-[200px] truncate px-3 py-2 text-xs text-text-secondary">{s.attacker_formation}</td>
                       <td className="max-w-[200px] truncate px-3 py-2 text-xs text-text-secondary">{s.defender_formation}</td>
+                      <td className="px-3 py-2 text-center">
+                        {s.details ? (
+                          <span className="text-[10px] text-def-blue">詳細あり</span>
+                        ) : (
+                          <span className="text-[10px] text-text-muted">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </div>
+
+          {/* Sim Detail Modal */}
+          {selectedSim && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onClick={() => setSelectedSim(null)}
+            >
+              <div
+                className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-wos-border bg-wos-panel p-6 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-text-primary">シミュレーション詳細</h3>
+                  <button
+                    onClick={() => setSelectedSim(null)}
+                    className="rounded-lg border border-wos-border px-3 py-1 text-xs text-text-muted hover:bg-wos-dark"
+                  >
+                    閉じる
+                  </button>
+                </div>
+
+                <div className="mb-3 text-xs text-text-muted">
+                  {formatDate(selectedSim.created_at)} / 勝者: {selectedSim.winner} / 試行: {selectedSim.trials}回
+                </div>
+
+                {selectedSim.details ? (() => {
+                  const d = selectedSim.details!;
+                  const renderSide = (label: string, side: SimSideDetail, colorClass: string) => (
+                    <div className={`rounded-lg border p-3 ${colorClass}`}>
+                      <div className="mb-2 text-sm font-bold">{label}</div>
+                      <div className="space-y-1 text-xs">
+                        <div>
+                          <span className="font-medium text-text-secondary">リーダー: </span>
+                          {side.leaders.map(l => l.name).join(', ') || 'なし'}
+                        </div>
+                        <div>
+                          <span className="font-medium text-text-secondary">ライダー: </span>
+                          {side.riders.map(r => r.name).join(', ') || 'なし'}
+                        </div>
+                        <div>
+                          <span className="font-medium text-text-secondary">兵比: </span>
+                          盾{side.troopRatio.shield}:槍{side.troopRatio.spear}:弓{side.troopRatio.bow}
+                        </div>
+                        <div>
+                          <span className="font-medium text-text-secondary">総兵数: </span>
+                          {side.totalTroops.toLocaleString()} (T{side.troopTier})
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        {renderSide('攻撃側', d.atkFormation, 'border-atk-red/30 bg-atk-red/5')}
+                        {renderSide('防御側', d.defFormation, 'border-def-blue/30 bg-def-blue/5')}
+                      </div>
+
+                      {/* Results */}
+                      <div className="rounded-lg border border-wos-border bg-white/60 p-3">
+                        <div className="mb-2 text-sm font-bold text-text-primary">結果</div>
+                        <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                          <div>
+                            <div className="text-text-muted">攻撃勝利</div>
+                            <div className="text-lg font-bold text-atk-red">{d.results.atkWins}</div>
+                          </div>
+                          <div>
+                            <div className="text-text-muted">引き分け</div>
+                            <div className="text-lg font-bold text-text-primary">{d.results.draws}</div>
+                          </div>
+                          <div>
+                            <div className="text-text-muted">防御勝利</div>
+                            <div className="text-lg font-bold text-def-blue">{d.results.defWins}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2 text-center text-xs text-text-muted">
+                          平均ターン: {d.results.avgTurns}
+                        </div>
+                      </div>
+
+                      {/* Last Run Details */}
+                      {d.results.lastRun && (
+                        <div className="rounded-lg border border-wos-border bg-white/60 p-3">
+                          <div className="mb-2 text-sm font-bold text-text-primary">最終実行詳細</div>
+                          <div className="grid grid-cols-2 gap-4 text-xs">
+                            <div>
+                              <div className="mb-1 font-bold text-atk-red">攻撃側残存</div>
+                              <div>盾: {d.results.lastRun.aTroopsLeft.shield.toLocaleString()}</div>
+                              <div>槍: {d.results.lastRun.aTroopsLeft.spear.toLocaleString()}</div>
+                              <div>弓: {d.results.lastRun.aTroopsLeft.bow.toLocaleString()}</div>
+                              <div className="mt-1 border-t border-wos-border pt-1 text-text-secondary">
+                                <div>死亡: {d.results.lastRun.aCasualty.dead.toLocaleString()}</div>
+                                <div>重傷: {d.results.lastRun.aCasualty.severeWound.toLocaleString()}</div>
+                                <div>軽傷: {d.results.lastRun.aCasualty.lightWound.toLocaleString()}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="mb-1 font-bold text-def-blue">防御側残存</div>
+                              <div>盾: {d.results.lastRun.dTroopsLeft.shield.toLocaleString()}</div>
+                              <div>槍: {d.results.lastRun.dTroopsLeft.spear.toLocaleString()}</div>
+                              <div>弓: {d.results.lastRun.dTroopsLeft.bow.toLocaleString()}</div>
+                              <div className="mt-1 border-t border-wos-border pt-1 text-text-secondary">
+                                <div>死亡: {d.results.lastRun.dCasualty.dead.toLocaleString()}</div>
+                                <div>重傷: {d.results.lastRun.dCasualty.severeWound.toLocaleString()}</div>
+                                <div>軽傷: {d.results.lastRun.dCasualty.lightWound.toLocaleString()}</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Open in Simulator button */}
+                      <button
+                        onClick={() => handleOpenInSimulator(selectedSim)}
+                        className="w-full rounded-lg bg-gradient-to-r from-gold to-gold-light px-4 py-3 text-sm font-bold text-white shadow transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        この設定でシミュレーターを開く
+                      </button>
+                    </div>
+                  );
+                })() : (
+                  <div className="rounded-lg border border-dashed border-wos-border p-6 text-center text-sm text-text-muted">
+                    この履歴には詳細データがありません（旧バージョンで保存されたデータ）
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

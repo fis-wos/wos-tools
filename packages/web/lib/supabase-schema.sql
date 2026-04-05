@@ -69,3 +69,6 @@ CREATE TABLE IF NOT EXISTS counter_analyses (
 
 ALTER TABLE counter_analyses ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all" ON counter_analyses FOR ALL USING (true) WITH CHECK (true);
+
+-- シミュレーション履歴にdetailsカラムを追加（編成・結果の詳細をJSONBで保存）
+ALTER TABLE sim_history ADD COLUMN IF NOT EXISTS details JSONB;
