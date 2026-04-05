@@ -160,7 +160,7 @@ const MAX_TURNS = 300;
  * C ≈ 50 produces ~35,000 kills/turn → battle resolves in ~50 turns.
  * This will be refined with more battle report data.
  */
-const DAMAGE_COEFFICIENT = 50;
+const DAMAGE_COEFFICIENT = 20;
 
 /** Type advantage bonus multiplier */
 const TYPE_BONUS = 1.10;
@@ -261,7 +261,8 @@ function typeBonus(attackerType: TroopType, targetType: TroopType): number {
  */
 export function evSk(
   leaders: Hero[],
-  riders: Hero[]
+  riders: Hero[],
+  turnNumber: number = 1
 ): SkillEffect {
   const effect = emptySkillEffect();
 
@@ -273,7 +274,17 @@ export function evSk(
   let defDebufSum = 0;     // debuff reducing enemy DEF (-> oppDefenseDown)
 
   const processSkill = (skill: Skill): void => {
-    const fires = skill.tp === 'always' || Math.random() < skill.prob;
+    let fires = false;
+    if (skill.tp === 'always') {
+      fires = true;
+    } else if (skill.tp === 'periodic') {
+      // N回/Nターン毎に1回発動（period=3なら3ターンに1回）
+      const period = skill.period || 1;
+      fires = (turnNumber % period === 0);
+    } else {
+      // prob型: 確率で発動
+      fires = Math.random() < skill.prob;
+    }
     if (!fires) return;
 
     if (skill.atkDmgBuf) atkDmgBufSum += skill.atkDmgBuf;
@@ -364,14 +375,10 @@ function calcKills(
 ): number {
   if (attackerCount <= 0 || targetCount <= 0) return 0;
 
-  // 兵士基礎ステータス × 英雄ステータス%
-  const atkBase = TROOP_BASE_STATS[attackerType][atkTroopTier];
-  const defBase = TROOP_BASE_STATS[targetType][defTroopTier];
-
-  const atk = atkBase.atk * (1 + attackerStats.atk / 100);
-  const leth = Math.max(atkBase.leth * (1 + attackerStats.leth / 100), 1);
-  const tDef = Math.max(defBase.def * (1 + targetStats.def / 100), 1);
-  const tHp = Math.max(defBase.hp * (1 + targetStats.hp / 100), 1);
+  // ベースステータスは両者同一MAXと仮定してキャンセル
+  // 差がつくのはスキル効果・兵数・三すくみのみ
+  // (実際のゲームでは領主装備/宝石/専門家/島等で差がつくが、
+  //  シミュレーターでは再現不可能なため無視)
 
   // SkillMod = (attacker damageUp * attacker oppDefenseDown) / (defender defenseUp * defender oppDamageDown)
   const skillMod =
@@ -383,7 +390,6 @@ function calcKills(
   const rawKills =
     DAMAGE_COEFFICIENT *
     Math.sqrt(attackerCount) *
-    ((atk * leth) / (tDef * tHp)) *
     Math.max(skillMod, 0.01) *
     tBonus *
     jitter();
@@ -466,8 +472,8 @@ export function sim1(
     turn++;
 
     // Evaluate skills each turn (re-roll probabilities)
-    const aSkEff = evSk(aLeaders, aRiders);
-    const dSkEff = evSk(dLeaders, dRiders);
+    const aSkEff = evSk(aLeaders, aRiders, turn);
+    const dSkEff = evSk(dLeaders, dRiders, turn);
 
     // Simultaneous damage accumulation
     const aDmgThisTurn = emptyTroopCount(); // damage to attacker
@@ -858,8 +864,8 @@ export function simRally(config: RallyConfig): RallyResult {
     turn++;
 
     // 2. Evaluate skills each turn (re-roll probabilities)
-    const aSkEff = evSk(config.atkLeaders as Hero[], atkJoinerHeroes);
-    const dSkEff = evSk(config.defLeaders as Hero[], defJoinerHeroes);
+    const aSkEff = evSk(config.atkLeaders as Hero[], atkJoinerHeroes, turn);
+    const dSkEff = evSk(config.defLeaders as Hero[], defJoinerHeroes, turn);
 
     // Simultaneous damage accumulation
     const aDmgThisTurn = emptyTroopCount();
