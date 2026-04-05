@@ -1,299 +1,880 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import type { Participant, RewardItem, LotteryConfig, LotteryResult, Winner } from '@/lib/lottery/types';
+import { runLottery, verifyResult } from '@/lib/lottery/lottery-engine';
 
-interface Participant {
-  id: number;
-  name: string;
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const ADMIN_PASSWORD = 'fisfis';
+
+const STORAGE_KEYS = {
+  applicants: 'wos-lottery-applicants',
+  rewards: 'wos-lottery-rewards',
+  result: 'wos-lottery-result',
+} as const;
+
+const TIER_BG: Record<string, string> = {
+  S: 'bg-amber-100 border-amber-300',
+  A: 'bg-gray-100 border-gray-300',
+  B: 'bg-orange-50 border-orange-300',
+};
+
+const TIER_BADGE: Record<string, string> = {
+  S: 'bg-amber-200 text-amber-800 border border-amber-400',
+  A: 'bg-gray-200 text-gray-700 border border-gray-400',
+  B: 'bg-orange-100 text-orange-800 border border-orange-400',
+};
+
+const EQUAL_CONFIG: LotteryConfig = {
+  weights: { kills: 0, score: 0, daysActive: 0, base: 1 },
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function loadJSON<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-interface Reward {
-  id: number;
-  name: string;
-  quantity: number;
+function saveJSON<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
-interface LotteryResult {
-  participant: string;
-  reward: string;
+function generateSeed(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 16; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
+
+function makeParticipant(name: string, alliance: string): Participant {
+  return {
+    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    alliance,
+    registeredAt: Date.now(),
+    kills: 0,
+    score: 0,
+    daysActive: 1,
+  };
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Expand rewards
+// ---------------------------------------------------------------------------
+
+function expandRewards(rewards: RewardItem[]): RewardItem[] {
+  const expanded: RewardItem[] = [];
+  for (const r of rewards) {
+    for (let i = 0; i < r.quantity; i++) {
+      expanded.push({ ...r, id: `${r.id}-${i}`, quantity: 1 });
+    }
+  }
+  return expanded;
+}
+
+// ---------------------------------------------------------------------------
+// CSV export
+// ---------------------------------------------------------------------------
+
+function exportCSV(applicants: Participant[]) {
+  const header = 'キャラクター名,同盟名,応募日時';
+  const rows = applicants.map(
+    (a) => `"${a.name}","${a.alliance}","${formatDate(a.registeredAt)}"`,
+  );
+  const blob = new Blob([header + '\n' + rows.join('\n')], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `lottery-applicants-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 export default function LotteryPage() {
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [results, setResults] = useState<LotteryResult[]>([]);
-  const [newParticipant, setNewParticipant] = useState("");
-  const [newReward, setNewReward] = useState("");
+  // --- State ---
+  const [applicants, setApplicants] = useState<Participant[]>([]);
+  const [rewards, setRewards] = useState<RewardItem[]>([]);
+  const [result, setResult] = useState<LotteryResult | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Application form
+  const [charName, setCharName] = useState('');
+  const [allianceName, setAllianceName] = useState('');
+  const [applied, setApplied] = useState(false);
+
+  // Admin
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminAuth, setAdminAuth] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+  const [adminTab, setAdminTab] = useState<'applicants' | 'rewards' | 'draw'>('applicants');
+
+  // Reward form (admin)
+  const [newRewardName, setNewRewardName] = useState('');
   const [newRewardQty, setNewRewardQty] = useState(1);
-  const [bulkInput, setBulkInput] = useState("");
-  const [showBulk, setShowBulk] = useState(false);
+  const [newRewardTier, setNewRewardTier] = useState<'S' | 'A' | 'B'>('A');
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+
+  // Draw (admin)
+  const [seedInput, setSeedInput] = useState('');
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isVerified, setIsVerified] = useState<boolean | null>(null);
 
-  const addParticipant = () => {
-    const name = newParticipant.trim();
+  // --- Hydrate from localStorage ---
+  useEffect(() => {
+    setApplicants(loadJSON<Participant[]>(STORAGE_KEYS.applicants, []));
+    setRewards(loadJSON<RewardItem[]>(STORAGE_KEYS.rewards, []));
+    setResult(loadJSON<LotteryResult | null>(STORAGE_KEYS.result, null));
+    setHydrated(true);
+  }, []);
+
+  // --- Persist ---
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(STORAGE_KEYS.applicants, applicants);
+  }, [applicants, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(STORAGE_KEYS.rewards, rewards);
+  }, [rewards, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(STORAGE_KEYS.result, result);
+  }, [result, hydrated]);
+
+  // --- Build winner map for result table ---
+  const winnerMap = useMemo(() => {
+    if (!result) return new Map<string, Winner>();
+    const m = new Map<string, Winner>();
+    for (const w of result.winners) {
+      // key by reward expanded id
+      m.set(w.reward.id, w);
+    }
+    return m;
+  }, [result]);
+
+  // Build display rows: one per expanded reward slot
+  const resultRows = useMemo(() => {
+    const expanded = expandRewards(rewards);
+    return expanded.map((r) => {
+      const winner = winnerMap.get(r.id);
+      return { reward: r, winner: winner ?? null };
+    });
+  }, [rewards, winnerMap]);
+
+  // --- User actions ---
+  const handleApply = useCallback(() => {
+    const name = charName.trim();
+    const alliance = allianceName.trim();
+    if (!name || !alliance) return;
+    const p = makeParticipant(name, alliance);
+    setApplicants((prev) => [...prev, p]);
+    setCharName('');
+    setAllianceName('');
+    setApplied(true);
+  }, [charName, allianceName]);
+
+  // --- Admin: password ---
+  const handlePasswordSubmit = useCallback(() => {
+    if (passwordInput === ADMIN_PASSWORD) {
+      setAdminAuth(true);
+      setPasswordError(false);
+      setPasswordInput('');
+    } else {
+      setPasswordError(true);
+    }
+  }, [passwordInput]);
+
+  // --- Admin: applicant management ---
+  const removeApplicant = useCallback((id: string) => {
+    setApplicants((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  // --- Admin: reward management ---
+  const addOrUpdateReward = useCallback(() => {
+    const name = newRewardName.trim();
     if (!name) return;
-    setParticipants((prev) => [
-      ...prev,
-      { id: Date.now(), name },
-    ]);
-    setNewParticipant("");
-  };
-
-  const addBulkParticipants = () => {
-    const names = bulkInput
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const newOnes = names.map((name, i) => ({
-      id: Date.now() + i,
-      name,
-    }));
-    setParticipants((prev) => [...prev, ...newOnes]);
-    setBulkInput("");
-    setShowBulk(false);
-  };
-
-  const removeParticipant = (id: number) => {
-    setParticipants((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const addReward = () => {
-    const name = newReward.trim();
-    if (!name) return;
-    setRewards((prev) => [
-      ...prev,
-      { id: Date.now(), name, quantity: newRewardQty },
-    ]);
-    setNewReward("");
+    if (editingRewardId) {
+      setRewards((prev) =>
+        prev.map((r) =>
+          r.id === editingRewardId
+            ? { ...r, name, quantity: newRewardQty, tier: newRewardTier }
+            : r,
+        ),
+      );
+      setEditingRewardId(null);
+    } else {
+      setRewards((prev) => [
+        ...prev,
+        {
+          id: `r-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name,
+          quantity: newRewardQty,
+          tier: newRewardTier,
+        },
+      ]);
+    }
+    setNewRewardName('');
     setNewRewardQty(1);
-  };
+    setNewRewardTier('A');
+  }, [newRewardName, newRewardQty, newRewardTier, editingRewardId]);
 
-  const removeReward = (id: number) => {
+  const startEditReward = useCallback((r: RewardItem) => {
+    setEditingRewardId(r.id);
+    setNewRewardName(r.name);
+    setNewRewardQty(r.quantity);
+    setNewRewardTier(r.tier);
+  }, []);
+
+  const cancelEditReward = useCallback(() => {
+    setEditingRewardId(null);
+    setNewRewardName('');
+    setNewRewardQty(1);
+    setNewRewardTier('A');
+  }, []);
+
+  const removeReward = useCallback((id: string) => {
     setRewards((prev) => prev.filter((r) => r.id !== id));
-  };
+  }, []);
 
-  const runLottery = () => {
-    if (participants.length === 0 || rewards.length === 0) return;
+  const moveReward = useCallback((id: string, dir: -1 | 1) => {
+    setRewards((prev) => {
+      const idx = prev.findIndex((r) => r.id === id);
+      if (idx < 0) return prev;
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  }, []);
 
+  // --- Admin: draw ---
+  const handleDraw = useCallback(() => {
+    if (applicants.length === 0 || rewards.length === 0) return;
     setIsDrawing(true);
+    setIsVerified(null);
 
-    // Expand rewards by quantity
-    const expandedRewards: string[] = [];
-    for (const r of rewards) {
-      for (let i = 0; i < r.quantity; i++) {
-        expandedRewards.push(r.name);
-      }
-    }
+    const expanded = expandRewards(rewards);
+    const seed = seedInput.trim() || generateSeed();
+    const config: LotteryConfig = { ...EQUAL_CONFIG, seed };
 
-    // Shuffle participants
-    const shuffled = [...participants].sort(() => Math.random() - 0.5);
-
-    // Assign rewards
-    const newResults: LotteryResult[] = [];
-    for (let i = 0; i < Math.min(shuffled.length, expandedRewards.length); i++) {
-      newResults.push({
-        participant: shuffled[i].name,
-        reward: expandedRewards[i],
-      });
-    }
-
-    // Animate delay
     setTimeout(() => {
-      setResults(newResults);
+      const lotteryResult = runLottery(applicants, expanded, config);
+      setResult(lotteryResult);
+      setSeedInput(lotteryResult.seed);
       setIsDrawing(false);
     }, 800);
-  };
+  }, [applicants, rewards, seedInput]);
 
-  const clearResults = () => setResults([]);
+  const handleVerify = useCallback(() => {
+    if (!result) return;
+    const expanded = expandRewards(rewards);
+    const verified = verifyResult(applicants, expanded, result);
+    setIsVerified(verified);
+  }, [result, applicants, rewards]);
+
+  const handleResetResult = useCallback(() => {
+    setResult(null);
+    setIsVerified(null);
+    setSeedInput('');
+  }, []);
+
+  // --- Render ---
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <span className="text-text-muted">読み込み中...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
-      <h2 className="text-gradient-gold mb-6 text-2xl font-bold">
-        SVS褒賞抽選
-      </h2>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Participants */}
-        <div className="panel-glow rounded-xl border border-wos-border bg-wos-panel p-5">
-          <h3 className="mb-3 text-sm font-bold text-ice-blue-light">
-            参加者
-            <span className="ml-2 text-xs text-gray-500">
-              ({participants.length}名)
-            </span>
-          </h3>
-
-          <div className="mb-3 flex gap-2">
-            <input
-              type="text"
-              value={newParticipant}
-              onChange={(e) => setNewParticipant(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addParticipant()}
-              placeholder="名前を入力..."
-              className="flex-1 rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-gray-200 placeholder-gray-600 outline-none focus:border-ice-blue/50"
-            />
-            <button
-              onClick={addParticipant}
-              className="rounded-lg bg-ice-blue/20 px-3 py-2 text-sm font-medium text-ice-blue transition-colors hover:bg-ice-blue/30"
-            >
-              追加
-            </button>
-          </div>
-
-          <button
-            onClick={() => setShowBulk(!showBulk)}
-            className="mb-3 text-xs text-gray-500 hover:text-gray-300"
-          >
-            {showBulk ? "閉じる" : "一括入力..."}
-          </button>
-
-          {showBulk && (
-            <div className="mb-3">
-              <textarea
-                value={bulkInput}
-                onChange={(e) => setBulkInput(e.target.value)}
-                placeholder="名前をカンマまたは改行で区切って入力..."
-                className="mb-2 w-full rounded-lg border border-wos-border bg-wos-dark p-3 text-sm text-gray-200 placeholder-gray-600 outline-none focus:border-ice-blue/50"
-                rows={4}
-              />
-              <button
-                onClick={addBulkParticipants}
-                className="w-full rounded-lg bg-ice-blue/20 py-2 text-xs font-medium text-ice-blue transition-colors hover:bg-ice-blue/30"
-              >
-                一括追加
-              </button>
-            </div>
-          )}
-
-          <div className="max-h-48 space-y-1 overflow-y-auto">
-            {participants.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between rounded-lg bg-wos-dark px-3 py-1.5"
-              >
-                <span className="text-sm text-gray-300">{p.name}</span>
-                <button
-                  onClick={() => removeParticipant(p.id)}
-                  className="text-xs text-gray-600 hover:text-atk-red"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-            {participants.length === 0 && (
-              <p className="py-4 text-center text-xs text-gray-600">
-                参加者を追加してください
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Rewards */}
-        <div className="panel-glow rounded-xl border border-wos-border bg-wos-panel p-5">
-          <h3 className="mb-3 text-sm font-bold text-gold-light">
-            報酬設定
-            <span className="ml-2 text-xs text-gray-500">
-              ({rewards.reduce((a, r) => a + r.quantity, 0)}個)
-            </span>
-          </h3>
-
-          <div className="mb-3 flex gap-2">
-            <input
-              type="text"
-              value={newReward}
-              onChange={(e) => setNewReward(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addReward()}
-              placeholder="報酬名..."
-              className="flex-1 rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-gray-200 placeholder-gray-600 outline-none focus:border-gold/50"
-            />
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={newRewardQty}
-              onChange={(e) => setNewRewardQty(Number(e.target.value))}
-              className="w-14 rounded-lg border border-wos-border bg-wos-dark px-2 py-2 text-center text-sm text-gray-200 outline-none focus:border-gold/50"
-            />
-            <button
-              onClick={addReward}
-              className="rounded-lg bg-gold/20 px-3 py-2 text-sm font-medium text-gold-light transition-colors hover:bg-gold/30"
-            >
-              追加
-            </button>
-          </div>
-
-          <div className="max-h-48 space-y-1 overflow-y-auto">
-            {rewards.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between rounded-lg bg-wos-dark px-3 py-1.5"
-              >
-                <span className="text-sm text-gray-300">
-                  {r.name}
-                  <span className="ml-2 text-xs text-gold-dark">
-                    x{r.quantity}
-                  </span>
-                </span>
-                <button
-                  onClick={() => removeReward(r.id)}
-                  className="text-xs text-gray-600 hover:text-atk-red"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-            {rewards.length === 0 && (
-              <p className="py-4 text-center text-xs text-gray-600">
-                報酬を追加してください
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Draw button */}
-      <div className="my-8 flex justify-center">
+      {/* Header with gear icon */}
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-gradient-gold text-2xl font-bold">
+          SVS褒賞抽選
+        </h2>
         <button
-          onClick={runLottery}
-          disabled={
-            participants.length === 0 || rewards.length === 0 || isDrawing
-          }
-          className="rounded-xl bg-gradient-to-r from-gold-dark to-gold-light px-10 py-3.5 text-base font-bold text-wos-dark shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+          onClick={() => setShowAdminModal(true)}
+          className="rounded-lg p-2 text-text-muted transition-colors hover:bg-wos-dark hover:text-text-secondary"
+          title="管理画面"
         >
-          {isDrawing ? "抽選中..." : "抽選実行"}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
         </button>
       </div>
 
-      {/* Results */}
-      {results.length > 0 && (
-        <div className="panel-glow rounded-xl border border-wos-border bg-wos-panel p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-gradient-gold text-lg font-bold">抽選結果</h3>
+      {/* ============================================================= */}
+      {/* Application Form                                               */}
+      {/* ============================================================= */}
+      <section className="panel-glow mb-8 rounded-xl border border-wos-border bg-wos-panel p-5">
+        <h3 className="mb-4 text-base font-bold text-text-primary">応募フォーム</h3>
+        {applied ? (
+          <div className="rounded-lg border border-bow-green/40 bg-bow-green/10 px-4 py-3 text-sm text-bow-green">
+            応募済みです。抽選結果は下の一覧で確認できます。
             <button
-              onClick={clearResults}
-              className="text-xs text-gray-500 hover:text-gray-300"
+              onClick={() => setApplied(false)}
+              className="ml-3 text-xs underline hover:no-underline"
             >
-              クリア
+              もう一度応募する
             </button>
           </div>
-          <div className="space-y-2">
-            {results.map((r, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded-lg bg-wos-dark px-4 py-2.5"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/20 text-xs font-bold text-gold-light">
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium text-gray-200">
-                    {r.participant}
-                  </span>
-                </div>
-                <span className="rounded-md bg-gold/10 px-3 py-1 text-sm font-medium text-gold-light">
-                  {r.reward}
-                </span>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">
+                  キャラクター名 <span className="text-atk-red">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={charName}
+                  onChange={(e) => setCharName(e.target.value)}
+                  placeholder="キャラクター名を入力"
+                  className="w-full rounded-lg border border-wos-border bg-white px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none focus:border-def-blue focus:ring-1 focus:ring-def-blue/30"
+                />
               </div>
-            ))}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">
+                  同盟名 <span className="text-atk-red">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={allianceName}
+                  onChange={(e) => setAllianceName(e.target.value)}
+                  placeholder="同盟名を入力"
+                  className="w-full rounded-lg border border-wos-border bg-white px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none focus:border-def-blue focus:ring-1 focus:ring-def-blue/30"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleApply}
+              disabled={!charName.trim() || !allianceName.trim()}
+              className="rounded-lg bg-def-blue px-6 py-2.5 text-sm font-bold text-white shadow transition-all hover:bg-def-blue-light hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              応募する
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* ============================================================= */}
+      {/* Results Table                                                  */}
+      {/* ============================================================= */}
+      <section className="panel-glow rounded-xl border border-wos-border bg-wos-panel p-5">
+        <h3 className="mb-4 text-base font-bold text-text-primary">当選結果一覧</h3>
+        {resultRows.length === 0 ? (
+          <p className="py-8 text-center text-sm text-text-muted">
+            報酬が設定されていません。管理者による設定をお待ちください。
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-wos-border text-xs font-bold text-text-secondary">
+                  <th className="px-3 py-2">報酬名</th>
+                  <th className="px-3 py-2 text-center">Tier</th>
+                  <th className="px-3 py-2">当選者名</th>
+                  <th className="px-3 py-2">同盟名</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resultRows.map((row, i) => {
+                  const tierBg = TIER_BG[row.reward.tier] || '';
+                  return (
+                    <tr
+                      key={`${row.reward.id}-${i}`}
+                      className={`border-b border-wos-border/50 ${tierBg}`}
+                    >
+                      <td className="px-3 py-2 font-medium text-text-primary">
+                        {row.reward.name}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span
+                          className={`inline-block rounded px-2 py-0.5 text-xs font-bold ${TIER_BADGE[row.reward.tier]}`}
+                        >
+                          {row.reward.tier}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.winner ? (
+                          <span className="font-medium text-text-primary">
+                            {row.winner.participant.name}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted">抽選待ち</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.winner ? (
+                          <span className="text-text-secondary">
+                            {row.winner.participant.alliance}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {result && (
+          <div className="mt-3 text-right text-[10px] text-text-muted">
+            Seed: {result.seed} | {formatDate(result.timestamp)}
+          </div>
+        )}
+      </section>
+
+      {/* ============================================================= */}
+      {/* Admin Modal                                                    */}
+      {/* ============================================================= */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12 backdrop-blur-sm">
+          <div className="relative w-full max-w-3xl rounded-2xl border border-wos-border bg-white shadow-2xl">
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowAdminModal(false);
+                setAdminAuth(false);
+                setPasswordInput('');
+                setPasswordError(false);
+              }}
+              className="absolute right-3 top-3 rounded-lg p-1.5 text-text-muted transition-colors hover:bg-gray-100 hover:text-text-primary"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+
+            {!adminAuth ? (
+              /* --- Password Gate --- */
+              <div className="p-8">
+                <h3 className="mb-4 text-lg font-bold text-text-primary">
+                  管理画面
+                </h3>
+                <p className="mb-4 text-sm text-text-secondary">
+                  パスワードを入力してください。
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => {
+                      setPasswordInput(e.target.value);
+                      setPasswordError(false);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+                    placeholder="パスワード"
+                    className="flex-1 rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none focus:border-def-blue focus:ring-1 focus:ring-def-blue/30"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handlePasswordSubmit}
+                    className="rounded-lg bg-def-blue px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-def-blue-light"
+                  >
+                    認証
+                  </button>
+                </div>
+                {passwordError && (
+                  <p className="mt-2 text-xs text-atk-red">
+                    パスワードが正しくありません。
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* --- Admin Panel --- */
+              <div className="p-6">
+                <h3 className="mb-4 text-lg font-bold text-text-primary">
+                  管理画面
+                </h3>
+
+                {/* Tabs */}
+                <div className="mb-5 flex gap-1 rounded-lg bg-wos-dark p-1">
+                  {(
+                    [
+                      { key: 'applicants', label: '応募者一覧' },
+                      { key: 'rewards', label: '報酬設定' },
+                      { key: 'draw', label: '抽選実行' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setAdminTab(tab.key)}
+                      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                        adminTab === tab.key
+                          ? 'bg-white text-text-primary shadow-sm'
+                          : 'text-text-muted hover:text-text-secondary'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ------ Applicants Tab ------ */}
+                {adminTab === 'applicants' && (
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-medium text-text-secondary">
+                        応募者数: {applicants.length}名
+                      </span>
+                      <button
+                        onClick={() => exportCSV(applicants)}
+                        disabled={applicants.length === 0}
+                        className="rounded-lg border border-wos-border bg-wos-dark px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-white disabled:opacity-40"
+                      >
+                        CSVエクスポート
+                      </button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto rounded-lg border border-wos-border">
+                      {applicants.length === 0 ? (
+                        <p className="py-6 text-center text-sm text-text-muted">
+                          応募者がいません
+                        </p>
+                      ) : (
+                        <table className="w-full text-left text-sm">
+                          <thead className="sticky top-0 bg-wos-dark">
+                            <tr className="text-xs font-bold text-text-secondary">
+                              <th className="px-3 py-2">キャラ名</th>
+                              <th className="px-3 py-2">同盟名</th>
+                              <th className="px-3 py-2">応募日時</th>
+                              <th className="px-3 py-2 text-center">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {applicants.map((a) => (
+                              <tr
+                                key={a.id}
+                                className="border-t border-wos-border/50"
+                              >
+                                <td className="px-3 py-2 text-text-primary">
+                                  {a.name}
+                                </td>
+                                <td className="px-3 py-2 text-text-secondary">
+                                  {a.alliance}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-text-muted">
+                                  {formatDate(a.registeredAt)}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    onClick={() => removeApplicant(a.id)}
+                                    className="text-xs text-atk-red hover:underline"
+                                  >
+                                    削除
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ------ Rewards Tab ------ */}
+                {adminTab === 'rewards' && (
+                  <div>
+                    {/* Add/Edit form */}
+                    <div className="mb-4 rounded-lg border border-wos-border bg-wos-dark p-4">
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={newRewardName}
+                          onChange={(e) => setNewRewardName(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === 'Enter' && addOrUpdateReward()
+                          }
+                          placeholder="報酬名"
+                          className="min-w-0 flex-1 rounded-lg border border-wos-border bg-white px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none focus:border-def-blue"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={newRewardQty}
+                          onChange={(e) =>
+                            setNewRewardQty(Number(e.target.value) || 1)
+                          }
+                          className="w-16 rounded-lg border border-wos-border bg-white px-2 py-2 text-center text-sm text-text-primary outline-none focus:border-def-blue"
+                          title="数量"
+                        />
+                      </div>
+                      <div className="mb-3 flex gap-1">
+                        {(['S', 'A', 'B'] as const).map((tier) => (
+                          <button
+                            key={tier}
+                            onClick={() => setNewRewardTier(tier)}
+                            className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-bold transition-colors ${
+                              newRewardTier === tier
+                                ? TIER_BADGE[tier]
+                                : 'border-wos-border bg-white text-text-muted'
+                            }`}
+                          >
+                            Tier {tier}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={addOrUpdateReward}
+                          disabled={!newRewardName.trim()}
+                          className="rounded-lg bg-def-blue px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-def-blue-light disabled:opacity-40"
+                        >
+                          {editingRewardId ? '更新' : '追加'}
+                        </button>
+                        {editingRewardId && (
+                          <button
+                            onClick={cancelEditReward}
+                            className="rounded-lg border border-wos-border px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-white"
+                          >
+                            キャンセル
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Reward list */}
+                    <div className="space-y-1">
+                      {rewards.length === 0 ? (
+                        <p className="py-6 text-center text-sm text-text-muted">
+                          報酬が設定されていません
+                        </p>
+                      ) : (
+                        rewards.map((r, idx) => (
+                          <div
+                            key={r.id}
+                            className="flex items-center gap-2 rounded-lg border border-wos-border bg-white px-3 py-2"
+                          >
+                            {/* Up / Down */}
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                onClick={() => moveReward(r.id, -1)}
+                                disabled={idx === 0}
+                                className="text-[10px] text-text-muted hover:text-text-primary disabled:opacity-20"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                onClick={() => moveReward(r.id, 1)}
+                                disabled={idx === rewards.length - 1}
+                                className="text-[10px] text-text-muted hover:text-text-primary disabled:opacity-20"
+                              >
+                                ▼
+                              </button>
+                            </div>
+                            <span
+                              className={`rounded px-2 py-0.5 text-xs font-bold ${TIER_BADGE[r.tier]}`}
+                            >
+                              {r.tier}
+                            </span>
+                            <span className="flex-1 text-sm font-medium text-text-primary">
+                              {r.name}
+                            </span>
+                            <span className="text-xs text-text-muted">
+                              x{r.quantity}
+                            </span>
+                            <button
+                              onClick={() => startEditReward(r)}
+                              className="text-xs text-def-blue hover:underline"
+                            >
+                              編集
+                            </button>
+                            <button
+                              onClick={() => removeReward(r.id)}
+                              className="text-xs text-atk-red hover:underline"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ------ Draw Tab ------ */}
+                {adminTab === 'draw' && (
+                  <div className="space-y-4">
+                    {/* Seed */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-text-secondary">
+                        シード値（空欄で自動生成）
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={seedInput}
+                          onChange={(e) => setSeedInput(e.target.value)}
+                          placeholder="自動生成"
+                          className="flex-1 rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none focus:border-def-blue"
+                        />
+                        <button
+                          onClick={() => setSeedInput(generateSeed())}
+                          className="rounded-lg border border-wos-border bg-white px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-wos-dark"
+                        >
+                          生成
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Info */}
+                    <div className="rounded-lg border border-wos-border bg-wos-dark p-3 text-xs text-text-secondary">
+                      <p>応募者: {applicants.length}名</p>
+                      <p>
+                        報酬: {rewards.length}種（計{' '}
+                        {rewards.reduce((a, r) => a + r.quantity, 0)}個）
+                      </p>
+                      <p className="mt-1 text-text-muted">
+                        全Tier均等抽選。上位Tierから順に抽選し、同一人物の重複当選はありません。
+                      </p>
+                    </div>
+
+                    {/* Buttons */}
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={handleDraw}
+                        disabled={
+                          applicants.length === 0 ||
+                          rewards.length === 0 ||
+                          isDrawing
+                        }
+                        className="rounded-xl bg-gradient-to-r from-gold to-gold-light px-8 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                      >
+                        {isDrawing ? '抽選中...' : '抽選実行'}
+                      </button>
+                      {result && (
+                        <>
+                          <button
+                            onClick={handleVerify}
+                            className="rounded-xl border border-def-blue/40 bg-def-blue/10 px-5 py-3 text-sm font-bold text-def-blue transition-colors hover:bg-def-blue/20"
+                          >
+                            結果検証
+                          </button>
+                          <button
+                            onClick={handleResetResult}
+                            className="rounded-xl border border-atk-red/40 bg-atk-red/10 px-5 py-3 text-sm font-bold text-atk-red transition-colors hover:bg-atk-red/20"
+                          >
+                            結果リセット
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Verification */}
+                    {isVerified !== null && (
+                      <div
+                        className={`rounded-lg border p-3 text-sm ${
+                          isVerified
+                            ? 'border-bow-green/40 bg-bow-green/10 text-bow-green'
+                            : 'border-atk-red/40 bg-atk-red/10 text-atk-red'
+                        }`}
+                      >
+                        {isVerified
+                          ? 'Seed検証成功: 同じシードで同じ結果が再現されました'
+                          : '検証失敗: 結果が一致しません'}
+                      </div>
+                    )}
+
+                    {/* Result preview in admin */}
+                    {result && (
+                      <div className="rounded-lg border border-wos-border bg-wos-dark p-3">
+                        <div className="mb-2 text-xs font-bold text-text-secondary">
+                          抽選結果プレビュー（Seed: {result.seed}）
+                        </div>
+                        <div className="max-h-60 space-y-1 overflow-y-auto">
+                          {result.winners.map((w, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between rounded bg-white px-3 py-1.5 text-xs"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gold-dark">
+                                  #{i + 1}
+                                </span>
+                                <span
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${TIER_BADGE[w.reward.tier]}`}
+                                >
+                                  {w.reward.tier}
+                                </span>
+                                <span className="text-text-primary">
+                                  {w.reward.name}
+                                </span>
+                              </div>
+                              <div className="text-text-secondary">
+                                {w.participant.name}（{w.participant.alliance}）
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {applicants.length > result.winners.length && (
+                          <div className="mt-2 border-t border-wos-border pt-2 text-[10px] text-text-muted">
+                            未当選:{' '}
+                            {applicants.length - result.winners.length}名
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

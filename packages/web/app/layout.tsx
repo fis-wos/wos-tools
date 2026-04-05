@@ -14,18 +14,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className="h-full antialiased">
+    <html lang="ja" className="antialiased">
       <head>
         <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="flex min-h-full flex-col">
+      <body className="min-h-screen">
+        {/* ヘッダー */}
         <Header />
-        <main className="flex-1">{children}</main>
-        <footer className="border-t border-wos-border bg-wos-panel px-4 py-4">
-          <div className="mx-auto max-w-6xl text-center text-xs text-gray-500">
+
+        {/* メインコンテンツ */}
+        <main className="relative">{children}</main>
+
+        {/* フッター */}
+        <footer className="bg-[#2a4a6a] px-4 py-4">
+          <div className="gold-divider mx-auto mb-3 max-w-xs" />
+          <div className="mx-auto max-w-6xl text-center text-xs text-white/50">
             WOS Tools &copy; 2026 &mdash; Whiteout Survival Community Toolkit
           </div>
         </footer>

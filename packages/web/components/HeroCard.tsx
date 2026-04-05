@@ -10,7 +10,7 @@ interface HeroCardProps {
 
 const troopColors: Record<string, string> = {
   shield: "border-shield-blue bg-shield-blue/10",
-  spear: "border-spear-red bg-spear-red/10",
+  spear: "border-spear-orange bg-spear-orange/10",
   bow: "border-bow-green bg-bow-green/10",
 };
 
@@ -21,8 +21,8 @@ const troopLabels: Record<string, string> = {
 };
 
 const rarityColors: Record<string, string> = {
-  SSR: "text-gold-light",
-  SR: "text-ice-blue",
+  SSR: "text-gold-dark",
+  SR: "text-def-blue",
 };
 
 export default function HeroCard({
@@ -51,12 +51,12 @@ export default function HeroCard({
       </span>
 
       {/* Generation badge */}
-      <span className="absolute top-1 right-1 text-[10px] text-gray-400">
+      <span className="absolute top-1 right-1 text-[10px] text-text-muted">
         G{generation}
       </span>
 
       {/* Portrait */}
-      <div className="my-1 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-wos-panel-light sm:h-16 sm:w-16">
+      <div className="my-1 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-white/60 sm:h-16 sm:w-16">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -65,17 +65,17 @@ export default function HeroCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="text-2xl text-gray-500">?</span>
+          <span className="text-2xl text-text-muted">?</span>
         )}
       </div>
 
       {/* Name */}
-      <span className="mt-1 text-xs font-medium text-gray-200 leading-tight">
+      <span className="mt-1 text-xs font-medium text-text-primary leading-tight">
         {name}
       </span>
 
       {/* Troop type label */}
-      <span className="mt-0.5 text-[10px] text-gray-400">
+      <span className="mt-0.5 text-[10px] text-text-secondary">
         {troopLabels[troopType]}
       </span>
     </button>

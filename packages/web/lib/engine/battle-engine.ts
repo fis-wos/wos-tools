@@ -33,8 +33,9 @@
  * Max turns: 100
  */
 
-import { type Hero, type Skill, type TroopType } from '@wos-tools/data';
+import { type Hero, type Skill, type TroopType } from './heroes';
 import { type TroopStats, type SkillMod, type HeroConfig, emptySkillMod } from './hero-stats';
+import { TROOP_BASE_STATS, type TroopTier } from './troop-skills';
 
 // ── Type definitions ──
 
@@ -119,6 +120,10 @@ export interface SimConfig {
   aRiders: Hero[];
   dLeaders: Hero[];
   dRiders: Hero[];
+  /** Troop tier for attacker (default: 11 = T11烈日) */
+  aTroopTier?: TroopTier;
+  /** Troop tier for defender (default: 11 = T11烈日) */
+  dTroopTier?: TroopTier;
   /** Hospital capacity for attacker (default: Infinity) */
   aHospitalCap?: number;
   /** Hospital capacity for defender (default: Infinity) */
@@ -147,9 +152,13 @@ const JITTER_MAX = 1.08;
 const MAX_TURNS = 300;
 
 /**
- * Damage coefficient C — scaling constant for the kill formula.
- * Raw formula yields ~700 kills/turn with 1.8M troops, needing 2500+ turns.
- * Real battles resolve in 30-60 turns. C=50 → ~35K kills/turn → ~50 turn battles.
+ * Damage coefficient C.
+ * The data-mined formula kills = sqrt(troops) * ATK*Leth / DEF*HP is missing a
+ * scaling constant that makes battles resolve in a reasonable number of turns.
+ * With 1.8M troops and typical G9-G12 stats, raw formula yields ~700 kills/turn,
+ * requiring 2500+ turns. Real battles end in 30-60 turns.
+ * C ≈ 50 produces ~35,000 kills/turn → battle resolves in ~50 turns.
+ * This will be refined with more battle report data.
  */
 const DAMAGE_COEFFICIENT = 50;
 
@@ -198,28 +207,28 @@ function emptySkillEffect(): SkillEffect {
 }
 
 /**
- * Determine the front-line target for an attacker of the given type.
+ * Determine target based on type-advantage targeting.
  *
- * Front-line order: shield (front) -> spear (mid) -> bow (back).
- * Attacks always target the front-most surviving row.
+ * Each troop type primarily attacks the type it has advantage over:
+ *   盾(shield) → 槍(spear)  密集戦陣: +10%
+ *   槍(spear)  → 弓(bow)    突撃: +10%
+ *   弓(bow)    → 盾(shield) 遠距離打撃: +10%
  *
- * Exception — Ambusher: spear has a 20% chance to bypass shield and hit bow.
+ * If the preferred target is gone, fall back to any surviving type.
+ * This was confirmed by battle reports showing:
+ *   - 槍 losses = 0 (only attacked by low-ATK shields)
+ *   - 弓 losses = high (attacked by high-ATK spears)
+ *   - 盾 losses = highest (attacked by highest-ATK bows)
  */
 function getTarget(
   attackerType: TroopType,
   enemyTroops: TroopCount
 ): TroopType | null {
-  // Ambusher: spear may bypass shield to hit bow
-  if (
-    attackerType === 'spear' &&
-    enemyTroops.shield > 0 &&
-    enemyTroops.bow > 0 &&
-    Math.random() < AMBUSHER_PROB
-  ) {
-    return 'bow';
-  }
+  // Primary target: type advantage (confirmed by battle reports)
+  const preferred = TYPE_ADVANTAGE[attackerType]; // shield→spear, spear→bow, bow→shield
+  if (enemyTroops[preferred] > 0) return preferred;
 
-  // Normal front-line targeting
+  // Fallback: attack any surviving troop type (front-line order)
   if (enemyTroops.shield > 0) return 'shield';
   if (enemyTroops.spear > 0) return 'spear';
   if (enemyTroops.bow > 0) return 'bow';
@@ -349,14 +358,20 @@ function calcKills(
   defenderSkillEff: SkillEffect,
   attackerType: TroopType,
   targetType: TroopType,
-  targetCount: number
+  targetCount: number,
+  atkTroopTier: TroopTier = 11,
+  defTroopTier: TroopTier = 11
 ): number {
   if (attackerCount <= 0 || targetCount <= 0) return 0;
 
-  const atk = attackerStats.atk;
-  const leth = Math.max(attackerStats.leth, 1); // avoid zero
-  const tDef = Math.max(targetStats.def, 1);
-  const tHp = Math.max(targetStats.hp, 1);
+  // 兵士基礎ステータス × 英雄ステータス%
+  const atkBase = TROOP_BASE_STATS[attackerType][atkTroopTier];
+  const defBase = TROOP_BASE_STATS[targetType][defTroopTier];
+
+  const atk = atkBase.atk * (1 + attackerStats.atk / 100);
+  const leth = Math.max(atkBase.leth * (1 + attackerStats.leth / 100), 1);
+  const tDef = Math.max(defBase.def * (1 + targetStats.def / 100), 1);
+  const tHp = Math.max(defBase.hp * (1 + targetStats.hp / 100), 1);
 
   // SkillMod = (attacker damageUp * attacker oppDefenseDown) / (defender defenseUp * defender oppDamageDown)
   const skillMod =
@@ -435,7 +450,9 @@ export function sim1(
   dLeaders: Hero[],
   dRiders: Hero[],
   aHospitalCap: number = Infinity,
-  dHospitalCap: number = Infinity
+  dHospitalCap: number = Infinity,
+  aTroopTier: TroopTier = 11,
+  dTroopTier: TroopTier = 11
 ): SimResult {
   const aT = cloneTroops(aTroopsInit);
   const dT = cloneTroops(dTroopsInit);
@@ -457,6 +474,12 @@ export function sim1(
     const dDmgThisTurn = emptyTroopCount(); // damage to defender
     const skillLabels: string[] = [];
 
+    // --- Type-advantage targeting (confirmed by battle reports) ---
+    // Each troop type attacks its preferred target (type advantage):
+    //   盾→槍, 槍→弓, 弓→盾
+    // If preferred target is gone, fall back to any surviving type.
+    // Targets are determined per troop type, not locked to a single front-line.
+
     // --- Each troop type on the attacker side attacks ---
     for (let atkIdx = 0; atkIdx < 3; atkIdx++) {
       const atkType = TROOP_TYPES[atkIdx];
@@ -477,7 +500,9 @@ export function sim1(
         dSkEff,
         atkType,
         target,
-        dT[target]
+        dT[target],
+        aTroopTier,
+        dTroopTier
       );
       dDmgThisTurn[target] += kills;
     }
@@ -502,7 +527,9 @@ export function sim1(
         aSkEff,
         defType,
         target,
-        aT[target]
+        aT[target],
+        dTroopTier,
+        aTroopTier
       );
       aDmgThisTurn[target] += kills;
     }
@@ -700,7 +727,9 @@ export function runSimulation(config: SimConfig): SimAggregateResult {
       config.dLeaders,
       config.dRiders,
       config.aHospitalCap ?? Infinity,
-      config.dHospitalCap ?? Infinity
+      config.dHospitalCap ?? Infinity,
+      config.aTroopTier ?? 11,
+      config.dTroopTier ?? 11
     );
 
     results.push(result);
