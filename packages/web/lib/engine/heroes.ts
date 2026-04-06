@@ -913,7 +913,7 @@ export const HEROES: Hero[] = [
   },
   {
     id: 'linsetsu', n: 'リンセツ', g: 0, r: 'SR' as Rarity, t: 'spear' as TroopType,
-    img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2024/12/%E5%87%9B%E9%9B%AA350.jpg',
+    img: '/heroes/linsetsu.jpg',
     dS: 5, aS: 6, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
     s1: { tp: 'always' as SkillTrigger, prob: 1, atkStatDebuf: 20, lbl: '威風八面: 敵攻撃-20%' },

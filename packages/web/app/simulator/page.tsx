@@ -1108,6 +1108,37 @@ export default function SimulatorPage() {
               </div>
             </div>
           </div>
+
+          {/* Simulation Run Buttons (in left panel) */}
+          <div className="mt-4 card-corners panel-glow rounded-xl border border-wos-border bg-wos-panel p-4">
+            <div className="flex flex-wrap gap-2">
+              {[1, 10, 50, 100].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => runSim(n)}
+                  disabled={isSimulating}
+                  className="btn-gold-shine flex-1 rounded-lg bg-gradient-to-r from-gold to-gold-light px-3 py-2.5 text-sm font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                >
+                  {isSimulating ? '...' : `${n}回`}
+                </button>
+              ))}
+            </div>
+            {/* Compact formation summary */}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+              <div className="rounded border border-atk-red/20 bg-atk-red/5 px-2 py-1">
+                <span className="font-bold text-atk-red">攻撃</span>
+                <span className="ml-1 text-text-secondary">
+                  {formations.atk.leaders.filter(Boolean).map(h => h!.n.slice(0,3)).join('・') || '未設定'}
+                </span>
+              </div>
+              <div className="rounded border border-def-blue/20 bg-def-blue/5 px-2 py-1">
+                <span className="font-bold text-def-blue">防御</span>
+                <span className="ml-1 text-text-secondary">
+                  {formations.def.leaders.filter(Boolean).map(h => h!.n.slice(0,3)).join('・') || '未設定'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right: Hero Grid + Results */}
@@ -1203,65 +1234,8 @@ export default function SimulatorPage() {
             />
           </div>
 
-          {/* Simulation Controls */}
+          {/* Results */}
           <div className="card-corners panel-glow rounded-xl border border-wos-border bg-wos-panel p-4">
-            <h3 className="mb-3 text-sm font-bold text-text-primary">
-              シミュレーション実行
-            </h3>
-
-            {/* Formation summary */}
-            <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
-              <div className="rounded-lg border border-atk-red/30 bg-atk-red/5 p-2">
-                <div className="mb-1 font-bold text-atk-red">攻撃側</div>
-                <div className="text-text-secondary">
-                  リーダー:{' '}
-                  {formations.atk.leaders
-                    .filter(Boolean)
-                    .map((h) => h!.n)
-                    .join(', ') || 'なし'}
-                </div>
-                <div className="text-text-secondary">
-                  ライダー:{' '}
-                  {formations.atk.riders.map((h) => h.n).join(', ') || 'なし'}
-                </div>
-                <div className="text-text-secondary">
-                  兵数: {formations.atk.totalTroops.toLocaleString()}
-                </div>
-              </div>
-              <div className="rounded-lg border border-def-blue/30 bg-def-blue/5 p-2">
-                <div className="mb-1 font-bold text-def-blue">防御側</div>
-                <div className="text-text-secondary">
-                  リーダー:{' '}
-                  {formations.def.leaders
-                    .filter(Boolean)
-                    .map((h) => h!.n)
-                    .join(', ') || 'なし'}
-                </div>
-                <div className="text-text-secondary">
-                  ライダー:{' '}
-                  {formations.def.riders.map((h) => h.n).join(', ') || 'なし'}
-                </div>
-                <div className="text-text-secondary">
-                  兵数: {formations.def.totalTroops.toLocaleString()}
-                </div>
-              </div>
-            </div>
-
-            {/* Run buttons */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {[1, 10, 50, 100].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => runSim(n)}
-                  disabled={isSimulating}
-                  className="btn-gold-shine rounded-lg bg-gradient-to-r from-gold to-gold-light px-5 py-2 text-sm font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-                >
-                  {isSimulating ? '計算中...' : `${n}回実行`}
-                </button>
-              ))}
-            </div>
-
-            {/* Results */}
             {simResult ? (
               <ResultDisplay
                 result={simResult}
@@ -1270,7 +1244,7 @@ export default function SimulatorPage() {
               />
             ) : (
               <div className="rounded-lg border border-dashed border-wos-border p-6 text-center text-sm text-text-muted">
-                編成を設定してシミュレーションを実行してください
+                ← 編成を設定して実行ボタンを押してください
               </div>
             )}
           </div>

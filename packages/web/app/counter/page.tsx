@@ -178,6 +178,11 @@ export default function CounterPage() {
   // Keep backward compat
   const imagePreview = imagePreviews.length > 0 ? imagePreviews[0] : null;
 
+  // Counter mode: are we countering an enemy attack or defense?
+  const [counterMode, setCounterMode] = useState<'counter_attack' | 'counter_defense'>('counter_attack');
+  // counter_attack = 敵が攻めてくる → こちらは防衛カウンター
+  // counter_defense = 敵が守っている → こちらは攻撃カウンター
+
   // Enemy formation (manual or from analysis)
   const [enemyShieldLeader, setEnemyShieldLeader] = useState<Hero | null>(
     null
@@ -518,12 +523,45 @@ export default function CounterPage() {
       </div>
 
       {/* Step 1: Image Upload or Manual Input */}
+      {/* Counter Mode Selection */}
+      <div className="mb-4 rounded-xl border border-wos-border bg-wos-panel p-4 shadow-sm">
+        <div className="mb-2 text-sm font-bold text-text-primary">どのようなカウンターを探しますか？</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCounterMode('counter_attack')}
+            className={`flex-1 rounded-lg px-4 py-3 text-sm font-bold transition-all ${
+              counterMode === 'counter_attack'
+                ? 'bg-def-blue text-white shadow-md'
+                : 'bg-white/60 text-text-secondary hover:bg-white/80'
+            }`}
+          >
+            <div className="text-lg mb-1">🛡️</div>
+            <div>敵の攻撃に対する防衛</div>
+            <div className="text-[10px] font-normal opacity-70 mt-0.5">敵が攻めてくる → こちらの防衛編成を提案</div>
+          </button>
+          <button
+            onClick={() => setCounterMode('counter_defense')}
+            className={`flex-1 rounded-lg px-4 py-3 text-sm font-bold transition-all ${
+              counterMode === 'counter_defense'
+                ? 'bg-atk-red text-white shadow-md'
+                : 'bg-white/60 text-text-secondary hover:bg-white/80'
+            }`}
+          >
+            <div className="text-lg mb-1">⚔️</div>
+            <div>敵の防衛を攻略</div>
+            <div className="text-[10px] font-normal opacity-70 mt-0.5">敵が守っている → こちらの攻撃編成を提案</div>
+          </button>
+        </div>
+      </div>
+
       <div className="mb-6 rounded-xl border border-wos-border bg-wos-panel p-4 shadow-sm">
         <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-text-primary">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ice-blue text-xs font-bold text-white">
+          <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white ${
+            counterMode === 'counter_attack' ? 'bg-def-blue' : 'bg-atk-red'
+          }`}>
             1
           </span>
-          敵の編成を入力
+          {counterMode === 'counter_attack' ? '敵の攻撃編成を入力' : '敵の防衛編成を入力'}
         </h2>
 
         {mode === 'upload' && (
@@ -975,7 +1013,7 @@ export default function CounterPage() {
               計算中... ({calcProgress.current}/{calcProgress.total})
             </span>
           ) : (
-            '🎯 カウンター編成を計算'
+            counterMode === 'counter_attack' ? '🛡️ 防衛カウンターを計算' : '⚔️ 攻撃カウンターを計算'
           )}
         </button>
         {!hasEnemyFormation && (
@@ -993,7 +1031,7 @@ export default function CounterPage() {
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold text-xs font-bold text-white">
                 ★
               </span>
-              カウンター編成 Top {counterResults.length}
+              {counterMode === 'counter_attack' ? '🛡️ 防衛' : '⚔️ 攻撃'}カウンター Top {counterResults.length}
             </h2>
             {savedToDb && (
               <span className="rounded-lg bg-bow-green/10 px-3 py-1 text-xs font-bold text-bow-green">
