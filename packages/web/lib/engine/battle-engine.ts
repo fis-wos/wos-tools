@@ -765,7 +765,7 @@ export function sim1(
 
       // Debug: log first turn details
       if (turn === 1) {
-        console.log(`[T1 ATK] ${atkType}→${target}: kills=${kills}, troops=${aT[atkType]}, heroStats=`, effectiveAHeroStats[atkIdx], 'targetStats=', effectiveDHeroStats[targetIdx], 'gearMod=', aGearAtkMod, 'gemMod=', aGemLethModByType[atkType][target], 'skillMod=', { aDmgUp: aSkEff.selfMod.damageUp, dDefUp: dSkEff.selfMod.defenseUp, aOppDefDown: aSkEff.oppMod.defenseDown, dOppDmgDown: dSkEff.oppMod.damageDown });
+        console.warn(`[T1 ATK] ${atkType}→${target}: kills=${kills}, troops=${aT[atkType]}, heroStats=`, JSON.stringify(effectiveAHeroStats[atkIdx]), 'targetStats=', JSON.stringify(effectiveDHeroStats[targetIdx]), 'gearMod=', aGearAtkMod, 'gemMod=', aGemLethModByType[atkType][target], 'skillMod=', JSON.stringify({ aDmgUp: aSkEff.selfMod.damageUp, dDefUp: dSkEff.selfMod.defenseUp, aOppDefDown: aSkEff.oppMod.defenseDown, dOppDmgDown: dSkEff.oppMod.damageDown }));
       }
     }
 
