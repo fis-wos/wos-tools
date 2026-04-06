@@ -377,33 +377,45 @@ function ResultDisplay({
           </summary>
           <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
             <div className="rounded border border-atk-red/20 bg-atk-red/5 p-2">
-              <div className="font-bold text-atk-red mb-1">攻撃側 {atkExtraStatsEnabled ? '追加ステ(手動)' : '英雄ステ'}</div>
-              <div className="space-y-0.5">
-                <div className="flex justify-between"><span className="text-text-muted">🛡盾 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[0]?.atk.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🔱槍 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[1]?.atk.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🏹弓 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[2]?.atk.toFixed(0) || 0}%</span></div>
-                <div className="border-t border-wos-border mt-1 pt-1"></div>
-                <div className="flex justify-between"><span className="text-text-muted">🛡盾 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[0]?.leth.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🔱槍 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[1]?.leth.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🏹弓 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[2]?.leth.toFixed(0) || 0}%</span></div>
-              </div>
+              <div className="font-bold text-atk-red mb-1">攻撃側 {atkExtraStatsEnabled ? '(手動)' : ''}</div>
+              {(['shield','spear','bow'] as const).map((tt, i) => {
+                const emoji = tt === 'shield' ? '🛡' : tt === 'spear' ? '🔱' : '🏹';
+                const label = tt === 'shield' ? '盾' : tt === 'spear' ? '槍' : '弓';
+                const s = debugInfo.atkHeroStats[i];
+                return s ? (
+                  <div key={tt} className="flex gap-1 py-0.5 border-b border-wos-border/30 last:border-0">
+                    <span className="w-5 shrink-0">{emoji}</span>
+                    <span className="w-4 shrink-0 font-bold">{label}</span>
+                    <span className="text-atk-red">A+{s.atk.toFixed(0)}</span>
+                    <span className="text-def-blue">D+{s.def.toFixed(0)}</span>
+                    <span className="text-bow-green">L+{s.leth.toFixed(0)}</span>
+                    <span className="text-spear-orange">H+{s.hp.toFixed(0)}</span>
+                  </div>
+                ) : null;
+              })}
               <div className="mt-1 pt-1 border-t border-wos-border text-text-muted">
-                兵数: 盾{debugInfo.atkTroops.shield.toLocaleString()} / 槍{debugInfo.atkTroops.spear.toLocaleString()} / 弓{debugInfo.atkTroops.bow.toLocaleString()}
+                兵: 盾{debugInfo.atkTroops.shield.toLocaleString()} / 槍{debugInfo.atkTroops.spear.toLocaleString()} / 弓{debugInfo.atkTroops.bow.toLocaleString()}
               </div>
             </div>
             <div className="rounded border border-def-blue/20 bg-def-blue/5 p-2">
-              <div className="font-bold text-def-blue mb-1">防御側 {defExtraStatsEnabled ? '追加ステ(手動)' : '英雄ステ'}</div>
-              <div className="space-y-0.5">
-                <div className="flex justify-between"><span className="text-text-muted">🛡盾 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[0]?.def.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🔱槍 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[1]?.def.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🏹弓 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[2]?.def.toFixed(0) || 0}%</span></div>
-                <div className="border-t border-wos-border mt-1 pt-1"></div>
-                <div className="flex justify-between"><span className="text-text-muted">🛡盾 HP</span><span className="font-bold">+{debugInfo.defHeroStats[0]?.hp.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🔱槍 HP</span><span className="font-bold">+{debugInfo.defHeroStats[1]?.hp.toFixed(0) || 0}%</span></div>
-                <div className="flex justify-between"><span className="text-text-muted">🏹弓 HP</span><span className="font-bold">+{debugInfo.defHeroStats[2]?.hp.toFixed(0) || 0}%</span></div>
-              </div>
+              <div className="font-bold text-def-blue mb-1">防御側 {defExtraStatsEnabled ? '(手動)' : ''}</div>
+              {(['shield','spear','bow'] as const).map((tt, i) => {
+                const emoji = tt === 'shield' ? '🛡' : tt === 'spear' ? '🔱' : '🏹';
+                const label = tt === 'shield' ? '盾' : tt === 'spear' ? '槍' : '弓';
+                const s = debugInfo.defHeroStats[i];
+                return s ? (
+                  <div key={tt} className="flex gap-1 py-0.5 border-b border-wos-border/30 last:border-0">
+                    <span className="w-5 shrink-0">{emoji}</span>
+                    <span className="w-4 shrink-0 font-bold">{label}</span>
+                    <span className="text-atk-red">A+{s.atk.toFixed(0)}</span>
+                    <span className="text-def-blue">D+{s.def.toFixed(0)}</span>
+                    <span className="text-bow-green">L+{s.leth.toFixed(0)}</span>
+                    <span className="text-spear-orange">H+{s.hp.toFixed(0)}</span>
+                  </div>
+                ) : null;
+              })}
               <div className="mt-1 pt-1 border-t border-wos-border text-text-muted">
-                兵数: 盾{debugInfo.defTroops.shield.toLocaleString()} / 槍{debugInfo.defTroops.spear.toLocaleString()} / 弓{debugInfo.defTroops.bow.toLocaleString()}
+                兵: 盾{debugInfo.defTroops.shield.toLocaleString()} / 槍{debugInfo.defTroops.spear.toLocaleString()} / 弓{debugInfo.defTroops.bow.toLocaleString()}
               </div>
             </div>
           </div>
