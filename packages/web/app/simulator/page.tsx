@@ -311,10 +311,17 @@ function ResultDisplay({
   result,
   atkLeaders,
   defLeaders,
+  debugInfo,
 }: {
   result: SimAggregateResult;
   atkLeaders: (Hero | null)[];
   defLeaders: (Hero | null)[];
+  debugInfo?: {
+    atkHeroStats: TroopStats[];
+    defHeroStats: TroopStats[];
+    atkTroops: TroopCount;
+    defTroops: TroopCount;
+  } | null;
 }) {
   const latestRun = result.results[result.results.length - 1];
   const atkWinRate = ((result.atkWins / result.runs) * 100).toFixed(1);
@@ -326,6 +333,47 @@ function ResultDisplay({
 
   return (
     <div className="space-y-4">
+      {/* バフ合計値（デバッグ情報） */}
+      {debugInfo && (
+        <details className="rounded-lg border border-wos-border bg-white/40 p-2">
+          <summary className="cursor-pointer text-xs font-bold text-text-secondary">
+            📊 参照バフ合計値（クリックで展開）
+          </summary>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+            <div className="rounded border border-atk-red/20 bg-atk-red/5 p-2">
+              <div className="font-bold text-atk-red mb-1">攻撃側 英雄ステ</div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between"><span className="text-text-muted">🛡盾 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[0]?.atk.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🔱槍 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[1]?.atk.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🏹弓 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[2]?.atk.toFixed(0) || 0}%</span></div>
+                <div className="border-t border-wos-border mt-1 pt-1"></div>
+                <div className="flex justify-between"><span className="text-text-muted">🛡盾 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[0]?.leth.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🔱槍 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[1]?.leth.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🏹弓 Leth</span><span className="font-bold">+{debugInfo.atkHeroStats[2]?.leth.toFixed(0) || 0}%</span></div>
+              </div>
+              <div className="mt-1 pt-1 border-t border-wos-border text-text-muted">
+                兵数: 盾{debugInfo.atkTroops.shield.toLocaleString()} / 槍{debugInfo.atkTroops.spear.toLocaleString()} / 弓{debugInfo.atkTroops.bow.toLocaleString()}
+              </div>
+            </div>
+            <div className="rounded border border-def-blue/20 bg-def-blue/5 p-2">
+              <div className="font-bold text-def-blue mb-1">防御側 英雄ステ</div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between"><span className="text-text-muted">🛡盾 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[0]?.def.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🔱槍 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[1]?.def.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🏹弓 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[2]?.def.toFixed(0) || 0}%</span></div>
+                <div className="border-t border-wos-border mt-1 pt-1"></div>
+                <div className="flex justify-between"><span className="text-text-muted">🛡盾 HP</span><span className="font-bold">+{debugInfo.defHeroStats[0]?.hp.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🔱槍 HP</span><span className="font-bold">+{debugInfo.defHeroStats[1]?.hp.toFixed(0) || 0}%</span></div>
+                <div className="flex justify-between"><span className="text-text-muted">🏹弓 HP</span><span className="font-bold">+{debugInfo.defHeroStats[2]?.hp.toFixed(0) || 0}%</span></div>
+              </div>
+              <div className="mt-1 pt-1 border-t border-wos-border text-text-muted">
+                兵数: 盾{debugInfo.defTroops.shield.toLocaleString()} / 槍{debugInfo.defTroops.spear.toLocaleString()} / 弓{debugInfo.defTroops.bow.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </details>
+      )}
+
       {/* VS Header with hero images */}
       <div className="flex items-center justify-center gap-4 py-3">
         <div className="flex -space-x-2">
@@ -698,6 +746,12 @@ export default function SimulatorPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'atk' | 'def' | 'atkDmg' | 'defBuf' | 'leth'>('default');
   const [simResult, setSimResult] = useState<SimAggregateResult | null>(null);
+  const [simDebugInfo, setSimDebugInfo] = useState<{
+    atkHeroStats: TroopStats[];
+    defHeroStats: TroopStats[];
+    atkTroops: TroopCount;
+    defTroops: TroopCount;
+  } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [gearGemModalSide, setGearGemModalSide] = useState<Side | null>(null);
 
@@ -1110,6 +1164,7 @@ export default function SimulatorPage() {
           });
 
           setSimResult(result);
+          setSimDebugInfo({ atkHeroStats: aHeroStats, defHeroStats: dHeroStats, atkTroops: aTroops, defTroops: dTroops });
 
           // Supabaseに保存
           try {
@@ -1882,6 +1937,7 @@ export default function SimulatorPage() {
                 result={simResult}
                 atkLeaders={formations.atk.leaders}
                 defLeaders={formations.def.leaders}
+                debugInfo={simDebugInfo}
               />
             ) : (
               <div className="rounded-lg border border-dashed border-wos-border p-6 text-center text-sm text-text-muted">
