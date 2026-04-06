@@ -942,11 +942,12 @@ export default function SimulatorPage() {
 
     const myTroops = formationToTroopCount(currentFormation);
 
-    // 全世代SSR英雄を対象（兵比0でもスキル目的で低世代を採用する戦略あり）
-    // 例: 5:0:5でミア(G3槍)を採用 → 槍ステ低いが全兵種バフスキルが強力
-    const topShield = HEROES.filter(h => h.r === 'SSR' && h.t === 'shield');
-    const topSpear = HEROES.filter(h => h.r === 'SSR' && h.t === 'spear');
-    const topBow = HEROES.filter(h => h.r === 'SSR' && h.t === 'bow');
+    // リーダーはステータスが全兵種に影響するためG10以上を優先
+    // ただし兵比0の兵種はスキル目的で低世代も検討（例: 5:0:5でミアG3槍）
+    const ratios = normalizeRatio(currentFormation);
+    const topShield = HEROES.filter(h => h.r === 'SSR' && h.t === 'shield' && (h.g >= 10 || ratios.shield === 0));
+    const topSpear = HEROES.filter(h => h.r === 'SSR' && h.t === 'spear' && (h.g >= 10 || ratios.spear === 0));
+    const topBow = HEROES.filter(h => h.r === 'SSR' && h.t === 'bow' && (h.g >= 10 || ratios.bow === 0));
 
     // デフォルト敵 (G12ミラー)
     const defaultEnemyLeaders = [
