@@ -269,12 +269,22 @@ function getTarget(
     return 'bow';
   }
 
-  // Front-line targeting: shield(front) → bow(back) → spear(mid)
-  // Confirmed by Kingshot analysis: "Cavalry often survive because they draw less aggro until late"
-  // Shield absorbs all attacks → when shield dies, bow becomes target → spear survives longest
-  if (enemyTroops.shield > 0) return 'shield';
-  if (enemyTroops.bow > 0) return 'bow';
+  // Hybrid: Front-line + Type-advantage targeting
+  // Phase 1 (盾生存中): 全軍が盾(前列)を攻撃 + Ambusher20%で弓を直接攻撃
+  // Phase 2 (盾全滅後): 三すくみに切替
+  //   → 各兵種が有利な相手を攻撃
+  //   → 槍→弓(+10%), 弓→盾(0、フォールバック→槍)
+  //   → 結果: 槍>弓で槍が残る（実データと一致）
+  if (enemyTroops.shield > 0) {
+    // Phase 1: 前線ルール（盾が壁）
+    return 'shield';
+  }
+  // Phase 2: 盾全滅後は三すくみターゲティング
+  const preferred = TYPE_ADVANTAGE[attackerType];
+  if (enemyTroops[preferred] > 0) return preferred;
+  // フォールバック
   if (enemyTroops.spear > 0) return 'spear';
+  if (enemyTroops.bow > 0) return 'bow';
   return null;
 }
 
