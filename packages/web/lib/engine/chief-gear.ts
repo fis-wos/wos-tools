@@ -45,14 +45,24 @@ export const CHIEF_GEAR_TIERS: ChiefGearTier[] = [
   { id: 'myth_t4_s3', name: '神話T4★3', atk: 187.00, def: 187.00 },
 ];
 
-/** Gem levels (lethality + HP, same for all gem types) */
+/** Gem levels (lethality + HP, same for all gem types) - all levels 0-16 */
 export const GEM_LEVELS: GemLevel[] = [
   { lv: 0, name: 'なし', leth: 0, hp: 0 },
   { lv: 1, name: 'Lv1', leth: 9, hp: 9 },
+  { lv: 2, name: 'Lv2', leth: 12, hp: 12 },
+  { lv: 3, name: 'Lv3', leth: 16, hp: 16 },
+  { lv: 4, name: 'Lv4', leth: 19, hp: 19 },
   { lv: 5, name: 'Lv5', leth: 25, hp: 25 },
+  { lv: 6, name: 'Lv6', leth: 30, hp: 30 },
+  { lv: 7, name: 'Lv7', leth: 35, hp: 35 },
+  { lv: 8, name: 'Lv8', leth: 40, hp: 40 },
+  { lv: 9, name: 'Lv9', leth: 45, hp: 45 },
   { lv: 10, name: 'Lv10', leth: 50, hp: 50 },
+  { lv: 11, name: 'Lv11', leth: 55, hp: 55 },
   { lv: 12, name: 'Lv12', leth: 64, hp: 64 },
+  { lv: 13, name: 'Lv13', leth: 73, hp: 73 },
   { lv: 14, name: 'Lv14', leth: 82, hp: 82 },
+  { lv: 15, name: 'Lv15', leth: 91, hp: 91 },
   { lv: 16, name: 'Lv16', leth: 100, hp: 100 },
 ];
 
@@ -77,4 +87,32 @@ export function calcGemStats(gemLv: number): { leth: number; hp: number } {
   const gem = GEM_LEVELS.find((g) => g.lv === gemLv);
   if (!gem) return { leth: 0, hp: 0 };
   return { leth: gem.leth, hp: gem.hp };
+}
+
+/** Default gems: 6 gear pieces x 3 gem slots (shield, spear, bow), all Lv16 */
+export function defaultGems(): number[][] {
+  return Array.from({ length: 6 }, () => [16, 16, 16]);
+}
+
+/**
+ * Calculate per-troop-type gem totals from the 6x3 gems matrix.
+ * gems[i] = [shieldGemLv, spearGemLv, bowGemLv] for gear piece i.
+ * Returns { shield: { leth, hp }, spear: { leth, hp }, bow: { leth, hp } }
+ */
+export function calcGemsTotalByType(gems: number[][]): Record<'shield' | 'spear' | 'bow', { leth: number; hp: number }> {
+  const result = {
+    shield: { leth: 0, hp: 0 },
+    spear: { leth: 0, hp: 0 },
+    bow: { leth: 0, hp: 0 },
+  };
+  const types: ('shield' | 'spear' | 'bow')[] = ['shield', 'spear', 'bow'];
+  for (let i = 0; i < 6; i++) {
+    const row = gems[i] ?? [0, 0, 0];
+    for (let j = 0; j < 3; j++) {
+      const stats = calcGemStats(row[j] ?? 0);
+      result[types[j]].leth += stats.leth;
+      result[types[j]].hp += stats.hp;
+    }
+  }
+  return result;
 }

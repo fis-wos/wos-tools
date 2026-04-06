@@ -36,7 +36,7 @@
 import { type Hero, type Skill, type TroopType } from './heroes';
 import { type TroopStats, type SkillMod, type HeroConfig, emptySkillMod } from './hero-stats';
 import { TROOP_BASE_STATS, type TroopTier } from './troop-skills';
-import { calcChiefGearStats, calcGemStats } from './chief-gear';
+import { calcChiefGearStats, calcGemStats, calcGemsTotalByType, defaultGems } from './chief-gear';
 import { calcHeroGearStats } from './hero-gear';
 
 // ── Type definitions ──
@@ -134,18 +134,22 @@ export interface SimConfig {
   aChiefGearTier?: string;
   /** Chief gear tier ID for defender (default: 'myth_t4_s3') */
   dChiefGearTier?: string;
-  /** Gem level for attacker (default: 16) */
+  /** Gem level for attacker (default: 16) - legacy single level */
   aGemLevel?: number;
-  /** Gem level for defender (default: 16) */
+  /** Gem level for defender (default: 16) - legacy single level */
   dGemLevel?: number;
+  /** Per-piece gem levels for attacker: 6x3 matrix [shieldLv, spearLv, bowLv] per gear piece */
+  aGems?: number[][];
+  /** Per-piece gem levels for defender: 6x3 matrix [shieldLv, spearLv, bowLv] per gear piece */
+  dGems?: number[][];
   /** Hero gear level ID for attacker (default: 'gold_max') */
   aHeroGearLevel?: string;
   /** Hero gear level ID for defender (default: 'gold_max') */
   dHeroGearLevel?: string;
-  /** Pet stats for attacker */
-  aPetStats?: { atk: number; def: number; leth: number; hp: number };
+  /** Pet stats for attacker (per troop type) */
+  aPetStats?: { atk: number; def: number; shieldLeth: number; shieldHp: number; spearLeth: number; spearHp: number; bowLeth: number; bowHp: number };
   /** Pet stats for defender */
-  dPetStats?: { atk: number; def: number; leth: number; hp: number };
+  dPetStats?: { atk: number; def: number; shieldLeth: number; shieldHp: number; spearLeth: number; spearHp: number; bowLeth: number; bowHp: number };
   runs?: number;
 }
 
@@ -503,8 +507,10 @@ export function sim1(
   dGemLevel: number = 16,
   aHeroGearLevel: string = 'gold_max',
   dHeroGearLevel: string = 'gold_max',
-  aPetStats: { atk: number; def: number; leth: number; hp: number } = { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 },
-  dPetStats: { atk: number; def: number; leth: number; hp: number } = { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 }
+  aGems: number[][] | undefined = undefined,
+  dGems: number[][] | undefined = undefined,
+  aPetStats = { atk: 333.5, def: 333.5, shieldLeth: 475.96, shieldHp: 475.96, spearLeth: 475.96, spearHp: 475.96, bowLeth: 475.96, bowHp: 475.96 },
+  dPetStats = { atk: 333.5, def: 333.5, shieldLeth: 475.96, shieldHp: 475.96, spearLeth: 475.96, spearHp: 475.96, bowLeth: 475.96, bowHp: 475.96 }
 ): SimResult {
   const aT = cloneTroops(aTroopsInit);
   const dT = cloneTroops(dTroopsInit);
@@ -515,22 +521,40 @@ export function sim1(
   // Chief gear and gem modifiers (differential between attacker and defender)
   const atkGear = calcChiefGearStats(aChiefGearTier);
   const defGear = calcChiefGearStats(dChiefGearTier);
-  const atkGem = calcGemStats(aGemLevel);
-  const defGem = calcGemStats(dGemLevel);
   const atkHeroGear = calcHeroGearStats(aHeroGearLevel);
   const defHeroGear = calcHeroGearStats(dHeroGearLevel);
 
-  // Pet modifiers (same method as chief gear / gems)
-  const aPetAtkMod = (1 + (aPetStats.atk + aPetStats.leth) / 100) / (1 + (dPetStats.def + dPetStats.hp) / 100);
-  const dPetAtkMod = (1 + (dPetStats.atk + dPetStats.leth) / 100) / (1 + (aPetStats.def + aPetStats.hp) / 100);
+  // Per-troop-type gem totals (use detailed gems matrix if available, else legacy single level)
+  const atkGemByType = aGems
+    ? calcGemsTotalByType(aGems)
+    : (() => { const g = calcGemStats(aGemLevel); return { shield: { leth: g.leth * 6, hp: g.hp * 6 }, spear: { leth: g.leth * 6, hp: g.hp * 6 }, bow: { leth: g.leth * 6, hp: g.hp * 6 } }; })();
+  const defGemByType = dGems
+    ? calcGemsTotalByType(dGems)
+    : (() => { const g = calcGemStats(dGemLevel); return { shield: { leth: g.leth * 6, hp: g.hp * 6 }, spear: { leth: g.leth * 6, hp: g.hp * 6 }, bow: { leth: g.leth * 6, hp: g.hp * 6 } }; })();
+
+  // Pet modifiers - per troop type (leth/hp are troop-specific, atk/def are global)
+  const petLethKey = (type: TroopType) => type === 'shield' ? 'shieldLeth' : type === 'spear' ? 'spearLeth' : 'bowLeth';
+  const petHpKey = (type: TroopType) => type === 'shield' ? 'shieldHp' : type === 'spear' ? 'spearHp' : 'bowHp';
 
   // Attacker's gear advantage when attacking defender
-  // Hero gear ATK/leth boost attacker's offense, DEF/hp boost defender's defense
-  const aGearAtkMod = (1 + (atkGear.atk + atkHeroGear.atk) / 100) / (1 + (defGear.def + defHeroGear.def) / 100) * aPetAtkMod;
-  const aGemLethMod = (1 + (atkGem.leth + atkHeroGear.leth) / 100) / (1 + (defGem.hp + defHeroGear.hp) / 100);
+  const aGearAtkMod = (1 + (atkGear.atk + atkHeroGear.atk + aPetStats.atk) / 100) / (1 + (defGear.def + defHeroGear.def + dPetStats.def) / 100);
+  // Per-type gem leth modifiers for attacker attacking defender
+  const aGemLethModByType: Record<string, Record<string, number>> = {};
+  for (const aType of TROOP_TYPES) {
+    aGemLethModByType[aType] = {};
+    for (const dType of TROOP_TYPES) {
+      aGemLethModByType[aType][dType] = (1 + (atkGemByType[aType].leth + atkHeroGear.leth) / 100) / (1 + (defGemByType[dType].hp + defHeroGear.hp) / 100);
+    }
+  }
   // Defender's gear advantage when attacking attacker
-  const dGearAtkMod = (1 + (defGear.atk + defHeroGear.atk) / 100) / (1 + (atkGear.def + atkHeroGear.def) / 100) * dPetAtkMod;
-  const dGemLethMod = (1 + (defGem.leth + defHeroGear.leth) / 100) / (1 + (atkGem.hp + atkHeroGear.hp) / 100);
+  const dGearAtkMod = (1 + (defGear.atk + defHeroGear.atk + dPetStats.atk) / 100) / (1 + (atkGear.def + atkHeroGear.def + aPetStats.def) / 100);
+  const dGemLethModByType: Record<string, Record<string, number>> = {};
+  for (const dType of TROOP_TYPES) {
+    dGemLethModByType[dType] = {};
+    for (const aType of TROOP_TYPES) {
+      dGemLethModByType[dType][aType] = (1 + (defGemByType[dType].leth + defHeroGear.leth) / 100) / (1 + (atkGemByType[aType].hp + atkHeroGear.hp) / 100);
+    }
+  }
 
   let turn = 0;
 
@@ -576,7 +600,7 @@ export function sim1(
         aTroopTier,
         dTroopTier,
         aGearAtkMod,
-        aGemLethMod
+        aGemLethModByType[atkType][target]
       );
       dDmgThisTurn[target] += kills;
     }
@@ -605,7 +629,7 @@ export function sim1(
         dTroopTier,
         aTroopTier,
         dGearAtkMod,
-        dGemLethMod
+        dGemLethModByType[defType][target]
       );
       aDmgThisTurn[target] += kills;
     }
@@ -812,8 +836,10 @@ export function runSimulation(config: SimConfig): SimAggregateResult {
       config.dGemLevel ?? 16,
       config.aHeroGearLevel ?? 'gold_max',
       config.dHeroGearLevel ?? 'gold_max',
-      config.aPetStats ?? { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 },
-      config.dPetStats ?? { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 }
+      config.aGems,
+      config.dGems,
+      config.aPetStats ?? { atk: 333.5, def: 333.5, shieldLeth: 475.96, shieldHp: 475.96, spearLeth: 475.96, spearHp: 475.96, bowLeth: 475.96, bowHp: 475.96 },
+      config.dPetStats ?? { atk: 333.5, def: 333.5, shieldLeth: 475.96, shieldHp: 475.96, spearLeth: 475.96, spearHp: 475.96, bowLeth: 475.96, bowHp: 475.96 }
     );
 
     results.push(result);

@@ -26,6 +26,7 @@ import {
   GEM_LEVELS,
   calcChiefGearStats,
   calcGemStats,
+  calcGemsTotalByType,
 } from '@/lib/engine/chief-gear';
 import {
   HERO_GEAR_LEVELS,
@@ -94,11 +95,16 @@ interface SideFormation {
   troopTier: TroopTier;
   chiefGearTier: string;
   gemLevel: number;
+  gems: number[][]; // 6 gear pieces x 3 gem slots [shieldLv, spearLv, bowLv]
   heroGearLevel: string;
-  petAtk: number;
-  petDef: number;
-  petLeth: number;
-  petHp: number;
+  petAtk: number;         // 部隊攻撃力
+  petDef: number;         // 部隊防御力
+  petShieldLeth: number;  // 盾兵殺傷力
+  petShieldHp: number;    // 盾兵HP
+  petSpearLeth: number;   // 槍兵殺傷力
+  petSpearHp: number;     // 槍兵HP
+  petBowLeth: number;     // 弓兵殺傷力
+  petBowHp: number;       // 弓兵HP
 }
 
 const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number }[] = [
@@ -109,6 +115,13 @@ const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number
   { label: '均等', shield: 1, spear: 1, bow: 1 },
 ];
 
+const DEFAULT_PET = {
+  atk: 333.5, def: 333.5,
+  shieldLeth: 475.96, shieldHp: 475.96,
+  spearLeth: 475.96, spearHp: 475.96,
+  bowLeth: 475.96, bowHp: 475.96,
+};
+
 function emptyFormation(): SideFormation {
   return {
     leaders: [null, null, null],
@@ -116,11 +129,16 @@ function emptyFormation(): SideFormation {
     totalTroops: 1800000,
     chiefGearTier: 'myth_t4_s3',
     gemLevel: 16,
+    gems: Array.from({ length: 6 }, () => [16, 16, 16]),
     heroGearLevel: 'gold_max',
-    petAtk: 333.5,
-    petDef: 333.5,
-    petLeth: 475.96,
-    petHp: 475.96,
+    petAtk: DEFAULT_PET.atk,
+    petDef: DEFAULT_PET.def,
+    petShieldLeth: DEFAULT_PET.shieldLeth,
+    petShieldHp: DEFAULT_PET.shieldHp,
+    petSpearLeth: DEFAULT_PET.spearLeth,
+    petSpearHp: DEFAULT_PET.spearHp,
+    petBowLeth: DEFAULT_PET.bowLeth,
+    petBowHp: DEFAULT_PET.bowHp,
     shieldRatio: 5,
     spearRatio: 0,
     bowRatio: 5,
@@ -471,6 +489,165 @@ function GroupedHeroGrid({
   );
 }
 
+// ── Gear & Gem Detail Modal ──
+
+const GEM_LV_OPTIONS = Array.from({ length: 17 }, (_, i) => i); // 0-16
+const GEAR_PIECE_LABELS = ['装備1', '装備2', '装備3', '装備4', '装備5', '装備6'];
+const GEM_TYPE_HEADERS = [
+  { label: '🛡盾', color: 'text-shield-blue' },
+  { label: '🔱槍', color: 'text-spear-orange' },
+  { label: '🏹弓', color: 'text-bow-green' },
+];
+
+function GearGemModal({
+  formation,
+  onApply,
+  onClose,
+}: {
+  formation: SideFormation;
+  onApply: (gearTier: string, gems: number[][]) => void;
+  onClose: () => void;
+}) {
+  const [gearTier, setGearTier] = useState(formation.chiefGearTier);
+  const [gems, setGems] = useState<number[][]>(
+    formation.gems.map((row) => [...row])
+  );
+
+  const setAllGems = useCallback((lv: number) => {
+    setGems(Array.from({ length: 6 }, () => [lv, lv, lv]));
+  }, []);
+
+  const updateGem = useCallback((pieceIdx: number, gemIdx: number, lv: number) => {
+    setGems((prev) => {
+      const next = prev.map((row) => [...row]);
+      next[pieceIdx][gemIdx] = lv;
+      return next;
+    });
+  }, []);
+
+  const gemTotals = useMemo(() => calcGemsTotalByType(gems), [gems]);
+  const gearStats = useMemo(() => calcChiefGearStats(gearTier), [gearTier]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-wos-card border border-wos-border rounded-2xl p-5 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl mx-4">
+        <h2 className="text-base font-bold text-text-primary mb-4">
+          領主装備・宝石 詳細設定
+        </h2>
+
+        {/* Gear Tier */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs text-text-muted">領主装備ティア</label>
+          <select
+            value={gearTier}
+            onChange={(e) => setGearTier(e.target.value)}
+            className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-sky-500/50"
+          >
+            {CHIEF_GEAR_TIERS.map((tier) => (
+              <option key={tier.id} value={tier.id}>
+                {tier.name}
+              </option>
+            ))}
+          </select>
+          {gearStats.atk > 0 && (
+            <div className="mt-1 text-[10px] text-text-muted">
+              ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%
+            </div>
+          )}
+        </div>
+
+        {/* Gem Table */}
+        <div className="mb-3">
+          <label className="mb-2 block text-xs text-text-muted">宝石 (6部位 x 3個 = 18個)</label>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-wos-border/50">
+                  <th className="py-1 text-left text-text-muted font-normal w-16">部位</th>
+                  {GEM_TYPE_HEADERS.map((h) => (
+                    <th key={h.label} className={`py-1 text-center font-normal ${h.color}`}>{h.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {gems.map((row, i) => (
+                  <tr key={i} className="border-b border-wos-border/20">
+                    <td className="py-1 text-text-muted">{GEAR_PIECE_LABELS[i]}</td>
+                    {row.map((lv, j) => (
+                      <td key={j} className="py-1 text-center">
+                        <select
+                          value={lv}
+                          onChange={(e) => updateGem(i, j, Number(e.target.value))}
+                          className="w-[62px] rounded border border-wos-border/50 bg-wos-dark px-1 py-0.5 text-[11px] text-text-primary outline-none focus:border-sky-500/50"
+                        >
+                          {GEM_LV_OPTIONS.map((l) => (
+                            <option key={l} value={l}>Lv{l}</option>
+                          ))}
+                        </select>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Presets */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setAllGems(16)} className="rounded-md bg-sky-600/20 px-2.5 py-1 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors">全部MAX</button>
+          <button type="button" onClick={() => setAllGems(10)} className="rounded-md bg-sky-600/20 px-2.5 py-1 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors">全部Lv10</button>
+          <button type="button" onClick={() => setAllGems(5)} className="rounded-md bg-sky-600/20 px-2.5 py-1 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors">全部Lv5</button>
+          <button type="button" onClick={() => setAllGems(0)} className="rounded-md bg-red-600/20 px-2.5 py-1 text-[11px] text-red-300 hover:bg-red-600/30 transition-colors">リセット</button>
+        </div>
+
+        {/* Totals */}
+        <div className="mb-5 rounded-lg border border-wos-border/50 bg-wos-dark/50 p-3">
+          <div className="text-[10px] text-text-muted mb-1">合計ボーナス</div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="text-center">
+              <div className="text-shield-blue font-medium">🛡盾</div>
+              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.shield.leth}%</span></div>
+              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.shield.hp}%</span></div>
+            </div>
+            <div className="text-center">
+              <div className="text-spear-orange font-medium">🔱槍</div>
+              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.spear.leth}%</span></div>
+              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.spear.hp}%</span></div>
+            </div>
+            <div className="text-center">
+              <div className="text-bow-green font-medium">🏹弓</div>
+              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.bow.leth}%</span></div>
+              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.bow.hp}%</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => onApply(gearTier, gems)}
+            className="flex-1 rounded-lg bg-sky-600 py-2 text-sm font-medium text-white hover:bg-sky-500 transition-colors"
+          >
+            適用
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-wos-border bg-wos-dark py-2 text-sm text-text-muted hover:bg-wos-border/30 transition-colors"
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──
 
 export default function SimulatorPage() {
@@ -485,6 +662,7 @@ export default function SimulatorPage() {
   const [sortBy, setSortBy] = useState<'default' | 'atk' | 'def' | 'atkDmg' | 'defBuf' | 'leth'>('default');
   const [simResult, setSimResult] = useState<SimAggregateResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [gearGemModalSide, setGearGemModalSide] = useState<Side | null>(null);
 
   // カウンターページからのプリセット読み込み
   useEffect(() => {
@@ -723,10 +901,22 @@ export default function SimulatorPage() {
             dChiefGearTier: defF.chiefGearTier,
             aGemLevel: atkF.gemLevel,
             dGemLevel: defF.gemLevel,
+            aGems: atkF.gems,
+            dGems: defF.gems,
             aHeroGearLevel: atkF.heroGearLevel,
             dHeroGearLevel: defF.heroGearLevel,
-            aPetStats: { atk: atkF.petAtk, def: atkF.petDef, leth: atkF.petLeth, hp: atkF.petHp },
-            dPetStats: { atk: defF.petAtk, def: defF.petDef, leth: defF.petLeth, hp: defF.petHp },
+            aPetStats: {
+              atk: atkF.petAtk, def: atkF.petDef,
+              shieldLeth: atkF.petShieldLeth, shieldHp: atkF.petShieldHp,
+              spearLeth: atkF.petSpearLeth, spearHp: atkF.petSpearHp,
+              bowLeth: atkF.petBowLeth, bowHp: atkF.petBowHp,
+            },
+            dPetStats: {
+              atk: defF.petAtk, def: defF.petDef,
+              shieldLeth: defF.petShieldLeth, shieldHp: defF.petShieldHp,
+              spearLeth: defF.petSpearLeth, spearHp: defF.petSpearHp,
+              bowLeth: defF.petBowLeth, bowHp: defF.petBowHp,
+            },
             runs,
           });
 
@@ -747,8 +937,14 @@ export default function SimulatorPage() {
               troopTier: f.troopTier,
               chiefGearTier: f.chiefGearTier,
               gemLevel: f.gemLevel,
+              gems: f.gems,
               heroGearLevel: f.heroGearLevel,
-              petStats: { atk: f.petAtk, def: f.petDef, leth: f.petLeth, hp: f.petHp },
+              petStats: {
+                atk: f.petAtk, def: f.petDef,
+                shieldLeth: f.petShieldLeth, shieldHp: f.petShieldHp,
+                spearLeth: f.petSpearLeth, spearHp: f.petSpearHp,
+                bowLeth: f.petBowLeth, bowHp: f.petBowHp,
+              },
             });
 
             const details = {
@@ -933,65 +1129,34 @@ export default function SimulatorPage() {
               </div>
             </div>
 
-            {/* Chief Gear selector */}
+            {/* Chief Gear + Gem summary with detail button */}
             <div className="mb-4">
-              <label className="mb-1 block text-xs text-text-muted">
-                領主装備
-              </label>
-              <select
-                value={currentFormation.chiefGearTier}
-                onChange={(e) =>
-                  setFormations((prev) => ({
-                    ...prev,
-                    [activeSide]: { ...prev[activeSide], chiefGearTier: e.target.value },
-                  }))
-                }
-                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
-              >
-                {CHIEF_GEAR_TIERS.map((tier) => (
-                  <option key={tier.id} value={tier.id}>
-                    {tier.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-text-muted">
+                  領主装備・宝石
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setGearGemModalSide(activeSide)}
+                  className="rounded-md bg-sky-600/20 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors"
+                >
+                  詳細設定 ⚙️
+                </button>
+              </div>
               {(() => {
                 const gearStats = calcChiefGearStats(currentFormation.chiefGearTier);
-                return gearStats.atk > 0 ? (
-                  <div className="mt-1 text-[10px] text-text-muted">
-                    ATK+{gearStats.atk.toFixed(0)}%, DEF+{gearStats.def.toFixed(0)}%
+                const gemTotals = calcGemsTotalByType(currentFormation.gems);
+                const tierInfo = CHIEF_GEAR_TIERS.find(t => t.id === currentFormation.chiefGearTier);
+                return (
+                  <div className="rounded-lg border border-wos-border bg-wos-dark/50 px-3 py-2 text-[10px] text-text-muted space-y-0.5">
+                    <div>{tierInfo?.name ?? '?'} ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%</div>
+                    <div className="flex flex-wrap gap-x-3">
+                      <span className="text-shield-blue">🛡盾殺+{gemTotals.shield.leth}%</span>
+                      <span className="text-spear-orange">🔱槍殺+{gemTotals.spear.leth}%</span>
+                      <span className="text-bow-green">🏹弓殺+{gemTotals.bow.leth}%</span>
+                    </div>
                   </div>
-                ) : null;
-              })()}
-            </div>
-
-            {/* Gem Level selector */}
-            <div className="mb-4">
-              <label className="mb-1 block text-xs text-text-muted">
-                宝石Lv
-              </label>
-              <select
-                value={currentFormation.gemLevel}
-                onChange={(e) =>
-                  setFormations((prev) => ({
-                    ...prev,
-                    [activeSide]: { ...prev[activeSide], gemLevel: Number(e.target.value) },
-                  }))
-                }
-                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
-              >
-                {GEM_LEVELS.map((gem) => (
-                  <option key={gem.lv} value={gem.lv}>
-                    {gem.name}
-                  </option>
-                ))}
-              </select>
-              {(() => {
-                const gemStats = calcGemStats(currentFormation.gemLevel);
-                return gemStats.leth > 0 ? (
-                  <div className="mt-1 text-[10px] text-text-muted">
-                    殺傷力+{gemStats.leth}%, HP+{gemStats.hp}%
-                  </div>
-                ) : null;
+                );
               })()}
             </div>
 
@@ -1026,12 +1191,10 @@ export default function SimulatorPage() {
               })()}
             </div>
 
-            {/* Pet Stats */}
+            {/* Pet Stats - 兵種別 */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-text-muted">
-                  ペット強化（手動入力）
-                </label>
+                <label className="text-xs text-text-muted">🐾 ペット強化</label>
                 <button
                   type="button"
                   className="text-[10px] px-1.5 py-0.5 rounded border border-wos-border bg-wos-dark text-text-muted hover:text-text-primary"
@@ -1040,42 +1203,52 @@ export default function SimulatorPage() {
                       ...prev,
                       [activeSide]: {
                         ...prev[activeSide],
-                        petAtk: 333.5,
-                        petDef: 333.5,
-                        petLeth: 475.96,
-                        petHp: 475.96,
+                        ...DEFAULT_PET,
+                        petAtk: DEFAULT_PET.atk,
+                        petDef: DEFAULT_PET.def,
+                        petShieldLeth: DEFAULT_PET.shieldLeth,
+                        petShieldHp: DEFAULT_PET.shieldHp,
+                        petSpearLeth: DEFAULT_PET.spearLeth,
+                        petSpearHp: DEFAULT_PET.spearHp,
+                        petBowLeth: DEFAULT_PET.bowLeth,
+                        petBowHp: DEFAULT_PET.bowHp,
                       },
                     }))
                   }
-                >
-                  MAX
-                </button>
+                >MAX</button>
               </div>
-              <div className="grid grid-cols-2 gap-1">
-                {([
-                  { key: 'petAtk' as const, label: 'ATK' },
-                  { key: 'petDef' as const, label: 'DEF' },
-                  { key: 'petLeth' as const, label: '殺傷力' },
-                  { key: 'petHp' as const, label: 'HP' },
-                ] as const).map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-1">
-                    <span className="text-[10px] text-text-muted w-8 shrink-0">{label}</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={currentFormation[key]}
-                      onChange={(e) =>
-                        setFormations((prev) => ({
-                          ...prev,
-                          [activeSide]: {
-                            ...prev[activeSide],
-                            [key]: parseFloat(e.target.value) || 0,
-                          },
-                        }))
-                      }
-                      className="w-full rounded border border-wos-border bg-wos-dark px-2 py-1 text-[11px] text-text-primary outline-none focus:border-def-blue/50"
-                    />
-                    <span className="text-[10px] text-text-muted">%</span>
+              <div className="space-y-1 text-[10px]">
+                <div className="grid grid-cols-3 gap-1">
+                  <span className="text-text-muted">部隊ATK</span>
+                  <span className="text-text-muted">部隊DEF</span>
+                  <span></span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['petAtk', 'petDef'] as const).map((key) => (
+                    <input key={key} type="number" step="0.01" value={currentFormation[key]}
+                      onChange={(e) => setFormations((prev) => ({ ...prev, [activeSide]: { ...prev[activeSide], [key]: parseFloat(e.target.value) || 0 } }))}
+                      className="rounded border border-wos-border bg-wos-dark px-1.5 py-0.5 text-[10px] text-text-primary outline-none" />
+                  ))}
+                  <span className="text-text-muted self-center">%</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1 mt-1">
+                  <span></span>
+                  <span className={`text-center font-bold ${TROOP_TEXT_COLORS.shield}`}>🛡盾</span>
+                  <span className={`text-center font-bold ${TROOP_TEXT_COLORS.spear}`}>🔱槍</span>
+                  <span className={`text-center font-bold ${TROOP_TEXT_COLORS.bow}`}>🏹弓</span>
+                </div>
+                {(['Leth', 'Hp'] as const).map((stat) => (
+                  <div key={stat} className="grid grid-cols-4 gap-1">
+                    <span className="text-text-muted">{stat === 'Leth' ? '殺傷力' : 'HP'}</span>
+                    {(['Shield', 'Spear', 'Bow'] as const).map((troop) => {
+                      const key = `pet${troop}${stat}` as keyof SideFormation;
+                      return (
+                        <input key={key} type="number" step="0.01"
+                          value={currentFormation[key] as number}
+                          onChange={(e) => setFormations((prev) => ({ ...prev, [activeSide]: { ...prev[activeSide], [key]: parseFloat(e.target.value) || 0 } }))}
+                          className="rounded border border-wos-border bg-wos-dark px-1.5 py-0.5 text-[10px] text-text-primary outline-none text-center" />
+                      );
+                    })}
                   </div>
                 ))}
               </div>
@@ -1434,6 +1607,25 @@ export default function SimulatorPage() {
           </div>
         </div>
       </div>
+
+      {/* Gear & Gem Modal */}
+      {gearGemModalSide !== null && (
+        <GearGemModal
+          formation={formations[gearGemModalSide]}
+          onApply={(gearTier, gems) => {
+            setFormations((prev) => ({
+              ...prev,
+              [gearGemModalSide]: {
+                ...prev[gearGemModalSide],
+                chiefGearTier: gearTier,
+                gems,
+              },
+            }));
+            setGearGemModalSide(null);
+          }}
+          onClose={() => setGearGemModalSide(null)}
+        />
+      )}
     </div>
   );
 }
