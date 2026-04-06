@@ -344,6 +344,8 @@ function ResultDisplay({
   atkLeaders,
   defLeaders,
   debugInfo,
+  atkExtraStatsEnabled,
+  defExtraStatsEnabled,
 }: {
   result: SimAggregateResult;
   atkLeaders: (Hero | null)[];
@@ -354,6 +356,8 @@ function ResultDisplay({
     atkTroops: TroopCount;
     defTroops: TroopCount;
   } | null;
+  atkExtraStatsEnabled?: boolean;
+  defExtraStatsEnabled?: boolean;
 }) {
   const latestRun = result.results[result.results.length - 1];
   const atkWinRate = ((result.atkWins / result.runs) * 100).toFixed(1);
@@ -373,7 +377,7 @@ function ResultDisplay({
           </summary>
           <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
             <div className="rounded border border-atk-red/20 bg-atk-red/5 p-2">
-              <div className="font-bold text-atk-red mb-1">攻撃側 英雄ステ</div>
+              <div className="font-bold text-atk-red mb-1">攻撃側 {atkExtraStatsEnabled ? '追加ステ(手動)' : '英雄ステ'}</div>
               <div className="space-y-0.5">
                 <div className="flex justify-between"><span className="text-text-muted">🛡盾 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[0]?.atk.toFixed(0) || 0}%</span></div>
                 <div className="flex justify-between"><span className="text-text-muted">🔱槍 ATK</span><span className="font-bold">+{debugInfo.atkHeroStats[1]?.atk.toFixed(0) || 0}%</span></div>
@@ -388,7 +392,7 @@ function ResultDisplay({
               </div>
             </div>
             <div className="rounded border border-def-blue/20 bg-def-blue/5 p-2">
-              <div className="font-bold text-def-blue mb-1">防御側 英雄ステ</div>
+              <div className="font-bold text-def-blue mb-1">防御側 {defExtraStatsEnabled ? '追加ステ(手動)' : '英雄ステ'}</div>
               <div className="space-y-0.5">
                 <div className="flex justify-between"><span className="text-text-muted">🛡盾 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[0]?.def.toFixed(0) || 0}%</span></div>
                 <div className="flex justify-between"><span className="text-text-muted">🔱槍 DEF</span><span className="font-bold">+{debugInfo.defHeroStats[1]?.def.toFixed(0) || 0}%</span></div>
@@ -1192,11 +1196,29 @@ export default function SimulatorPage() {
               spearLeth: defF.petSpearLeth, spearHp: defF.petSpearHp,
               bowLeth: defF.petBowLeth, bowHp: defF.petBowHp,
             },
+            ...(atkF.extraStatsEnabled ? { aExtraStats: extraStatsToSimFormat(atkF.extraStats) } : {}),
+            ...(defF.extraStatsEnabled ? { dExtraStats: extraStatsToSimFormat(defF.extraStats) } : {}),
             runs,
           });
 
+          // デバッグ表示: 手動入力モードの場合はextraStatsの値を表示
+          const debugAtkStats = atkF.extraStatsEnabled
+            ? [
+                { atk: atkF.extraStats.shieldATK, def: atkF.extraStats.shieldDEF, leth: atkF.extraStats.shieldLeth, hp: atkF.extraStats.shieldHP },
+                { atk: atkF.extraStats.spearATK, def: atkF.extraStats.spearDEF, leth: atkF.extraStats.spearLeth, hp: atkF.extraStats.spearHP },
+                { atk: atkF.extraStats.bowATK, def: atkF.extraStats.bowDEF, leth: atkF.extraStats.bowLeth, hp: atkF.extraStats.bowHP },
+              ]
+            : aHeroStats;
+          const debugDefStats = defF.extraStatsEnabled
+            ? [
+                { atk: defF.extraStats.shieldATK, def: defF.extraStats.shieldDEF, leth: defF.extraStats.shieldLeth, hp: defF.extraStats.shieldHP },
+                { atk: defF.extraStats.spearATK, def: defF.extraStats.spearDEF, leth: defF.extraStats.spearLeth, hp: defF.extraStats.spearHP },
+                { atk: defF.extraStats.bowATK, def: defF.extraStats.bowDEF, leth: defF.extraStats.bowLeth, hp: defF.extraStats.bowHP },
+              ]
+            : dHeroStats;
+
           setSimResult(result);
-          setSimDebugInfo({ atkHeroStats: aHeroStats, defHeroStats: dHeroStats, atkTroops: aTroops, defTroops: dTroops });
+          setSimDebugInfo({ atkHeroStats: debugAtkStats, defHeroStats: debugDefStats, atkTroops: aTroops, defTroops: dTroops });
 
           // Supabaseに保存
           try {
@@ -1221,6 +1243,8 @@ export default function SimulatorPage() {
                 spearLeth: f.petSpearLeth, spearHp: f.petSpearHp,
                 bowLeth: f.petBowLeth, bowHp: f.petBowHp,
               },
+              extraStatsEnabled: f.extraStatsEnabled,
+              ...(f.extraStatsEnabled ? { extraStats: f.extraStats } : {}),
             });
 
             const details = {
@@ -1405,69 +1429,151 @@ export default function SimulatorPage() {
               </div>
             </div>
 
-            {/* Chief Gear + Gem summary with detail button */}
+            {/* Extra Stats Toggle */}
             <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-text-muted">
-                  領主装備・宝石
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setGearGemModalSide(activeSide)}
-                  className="rounded-md bg-sky-600/20 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors"
-                >
-                  詳細設定 ⚙️
-                </button>
-              </div>
-              {(() => {
-                const gearStats = calcChiefGearStats(currentFormation.chiefGearTier);
-                const gemTotals = calcGemsTotalByType(currentFormation.gems);
-                const tierInfo = CHIEF_GEAR_TIERS.find(t => t.id === currentFormation.chiefGearTier);
-                return (
-                  <div className="rounded-lg border border-wos-border bg-wos-dark/50 px-3 py-2 text-[10px] text-text-muted space-y-0.5">
-                    <div>{tierInfo?.name ?? '?'} ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%</div>
-                    <div className="flex flex-wrap gap-x-3">
-                      <span className="text-shield-blue">🛡盾殺+{gemTotals.shield.leth}%</span>
-                      <span className="text-spear-orange">🔱槍殺+{gemTotals.spear.leth}%</span>
-                      <span className="text-bow-green">🏹弓殺+{gemTotals.bow.leth}%</span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Hero Gear selector */}
-            <div className="mb-4">
-              <label className="mb-1 block text-xs text-text-muted">
-                英雄装備
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={currentFormation.extraStatsEnabled}
+                  onChange={(e) =>
+                    setFormations((prev) => ({
+                      ...prev,
+                      [activeSide]: { ...prev[activeSide], extraStatsEnabled: e.target.checked },
+                    }))
+                  }
+                  className="rounded border-wos-border"
+                />
+                <span className="text-xs font-bold text-text-primary">
+                  追加ステータス（バトルレポートの値を直接入力）
+                </span>
               </label>
-              <select
-                value={currentFormation.heroGearLevel}
-                onChange={(e) =>
-                  setFormations((prev) => ({
-                    ...prev,
-                    [activeSide]: { ...prev[activeSide], heroGearLevel: e.target.value },
-                  }))
-                }
-                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
-              >
-                {HERO_GEAR_LEVELS.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name}
-                  </option>
-                ))}
-              </select>
-              {(() => {
-                const hgStats = calcHeroGearStats(currentFormation.heroGearLevel);
-                return hgStats.leth > 0 ? (
-                  <div className="mt-1 text-[10px] text-text-muted">
-                    殺傷力+{hgStats.leth}%, HP+{hgStats.hp}%, ATK+{hgStats.atk}%, DEF+{hgStats.def}%
-                  </div>
-                ) : null;
-              })()}
+              <div className="mt-0.5 text-[10px] text-text-muted">
+                {currentFormation.extraStatsEnabled
+                  ? 'ON: バトレポの追加ステータスを使用（装備/宝石/ペット設定は無視）'
+                  : 'OFF: 装備・宝石・ペットから自動計算'}
+              </div>
             </div>
 
-            {/* Pet Stats - 兵種別 */}
+            {currentFormation.extraStatsEnabled ? (
+              /* Extra Stats Manual Input */
+              <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                <div className="mb-2 text-xs font-bold text-amber-300">
+                  追加ステータス入力
+                </div>
+                <div className="text-[10px] text-text-muted mb-2">
+                  バトルレポートの「追加ステータス」をそのまま入力 (%)
+                </div>
+                {/* Header */}
+                <div className="grid grid-cols-5 gap-1 mb-1 text-[10px]">
+                  <span></span>
+                  <span className="text-center font-bold text-text-muted">ATK</span>
+                  <span className="text-center font-bold text-text-muted">DEF</span>
+                  <span className="text-center font-bold text-text-muted">殺傷</span>
+                  <span className="text-center font-bold text-text-muted">HP</span>
+                </div>
+                {/* Per troop type rows */}
+                {([
+                  { label: '盾', color: TROOP_TEXT_COLORS.shield, prefix: 'shield' as const },
+                  { label: '槍', color: TROOP_TEXT_COLORS.spear, prefix: 'spear' as const },
+                  { label: '弓', color: TROOP_TEXT_COLORS.bow, prefix: 'bow' as const },
+                ]).map(({ label, color, prefix }) => (
+                  <div key={prefix} className="grid grid-cols-5 gap-1 mb-1">
+                    <span className={`text-[11px] font-bold ${color} self-center`}>{label}</span>
+                    {(['ATK', 'DEF', 'Leth', 'HP'] as const).map((stat) => {
+                      const key = `${prefix}${stat}` as keyof ExtraStats;
+                      return (
+                        <input
+                          key={key}
+                          type="number"
+                          step="1"
+                          value={currentFormation.extraStats[key]}
+                          onChange={(e) =>
+                            setFormations((prev) => ({
+                              ...prev,
+                              [activeSide]: {
+                                ...prev[activeSide],
+                                extraStats: {
+                                  ...prev[activeSide].extraStats,
+                                  [key]: parseFloat(e.target.value) || 0,
+                                },
+                              },
+                            }))
+                          }
+                          className="rounded border border-wos-border bg-wos-dark px-1.5 py-0.5 text-[10px] text-text-primary outline-none text-center"
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+                <div className="mt-2 text-[9px] text-text-muted">
+                  例: バトレポで「盾ATK+3665%」なら盾ATK欄に 3665 を入力
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Chief Gear + Gem summary with detail button */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-text-muted">
+                      領主装備・宝石
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setGearGemModalSide(activeSide)}
+                      className="rounded-md bg-sky-600/20 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-sky-600/30 transition-colors"
+                    >
+                      詳細設定 ⚙️
+                    </button>
+                  </div>
+                  {(() => {
+                    const gearStats = calcChiefGearStats(currentFormation.chiefGearTier);
+                    const gemTotals = calcGemsTotalByType(currentFormation.gems);
+                    const tierInfo = CHIEF_GEAR_TIERS.find(t => t.id === currentFormation.chiefGearTier);
+                    return (
+                      <div className="rounded-lg border border-wos-border bg-wos-dark/50 px-3 py-2 text-[10px] text-text-muted space-y-0.5">
+                        <div>{tierInfo?.name ?? '?'} ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%</div>
+                        <div className="flex flex-wrap gap-x-3">
+                          <span className="text-shield-blue">🛡盾殺+{gemTotals.shield.leth}%</span>
+                          <span className="text-spear-orange">🔱槍殺+{gemTotals.spear.leth}%</span>
+                          <span className="text-bow-green">🏹弓殺+{gemTotals.bow.leth}%</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Hero Gear selector */}
+                <div className="mb-4">
+                  <label className="mb-1 block text-xs text-text-muted">
+                    英雄装備
+                  </label>
+                  <select
+                    value={currentFormation.heroGearLevel}
+                    onChange={(e) =>
+                      setFormations((prev) => ({
+                        ...prev,
+                        [activeSide]: { ...prev[activeSide], heroGearLevel: e.target.value },
+                      }))
+                    }
+                    className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
+                  >
+                    {HERO_GEAR_LEVELS.map((level) => (
+                      <option key={level.id} value={level.id}>
+                        {level.name}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const hgStats = calcHeroGearStats(currentFormation.heroGearLevel);
+                    return hgStats.leth > 0 ? (
+                      <div className="mt-1 text-[10px] text-text-muted">
+                        殺傷力+{hgStats.leth}%, HP+{hgStats.hp}%, ATK+{hgStats.atk}%, DEF+{hgStats.def}%
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+
+                {/* Pet Stats - 兵種別 */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-text-muted">🐾 ペット強化</label>
@@ -1529,6 +1635,8 @@ export default function SimulatorPage() {
                 ))}
               </div>
             </div>
+              </>
+            )}
 
             {/* Troop Skills Panel */}
             <div className="mb-4">
@@ -1970,6 +2078,8 @@ export default function SimulatorPage() {
                 atkLeaders={formations.atk.leaders}
                 defLeaders={formations.def.leaders}
                 debugInfo={simDebugInfo}
+                atkExtraStatsEnabled={formations.atk.extraStatsEnabled}
+                defExtraStatsEnabled={formations.def.extraStatsEnabled}
               />
             ) : (
               <div className="rounded-lg border border-dashed border-wos-border p-6 text-center text-sm text-text-muted">
