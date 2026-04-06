@@ -102,6 +102,7 @@ export interface SimResult {
   aCasualty: CasualtyReport;
   dCasualty: CasualtyReport;
   logs: BattleLog[];
+  debugT1?: string[];
 }
 
 /** Aggregated result of multiple simulations */
@@ -716,6 +717,7 @@ export function sim1(
   }
 
   let turn = 0;
+  const debugT1: string[] = [];
 
   while (turn < MAX_TURNS && totalTroops(aT) > 0 && totalTroops(dT) > 0) {
     turn++;
@@ -763,9 +765,9 @@ export function sim1(
       );
       dDmgThisTurn[target] += kills;
 
-      // Debug: log first turn details
+      // Collect debug info for turn 1
       if (turn === 1) {
-        console.warn(`[T1 ATK] ${atkType}→${target}: kills=${kills}, troops=${aT[atkType]}, heroStats=`, JSON.stringify(effectiveAHeroStats[atkIdx]), 'targetStats=', JSON.stringify(effectiveDHeroStats[targetIdx]), 'gearMod=', aGearAtkMod, 'gemMod=', aGemLethModByType[atkType][target], 'skillMod=', JSON.stringify({ aDmgUp: aSkEff.selfMod.damageUp, dDefUp: dSkEff.selfMod.defenseUp, aOppDefDown: aSkEff.oppMod.defenseDown, dOppDmgDown: dSkEff.oppMod.damageDown }));
+        debugT1.push(`${atkType}→${target}: kills=${kills} troops=${aT[atkType]} pen=${(TROOP_BASE_STATS[atkType][aTroopTier].atk * (1 + effectiveAHeroStats[atkIdx].atk / 100) / Math.max(TROOP_BASE_STATS[target][dTroopTier].def * (1 + effectiveDHeroStats[targetIdx].def / 100), 1)).toFixed(2)} lethF=${(TROOP_BASE_STATS[atkType][aTroopTier].leth * (1 + effectiveAHeroStats[atkIdx].leth / 100) / Math.max(TROOP_BASE_STATS[target][dTroopTier].hp * (1 + effectiveDHeroStats[targetIdx].hp / 100), 1)).toFixed(2)} gearM=${aGearAtkMod.toFixed(2)} gemM=${aGemLethModByType[atkType][target].toFixed(2)} skMod=${((aSkEff.selfMod.damageUp * aSkEff.oppMod.defenseDown) / (dSkEff.selfMod.defenseUp * dSkEff.oppMod.damageDown)).toFixed(2)} heroAtk=${effectiveAHeroStats[atkIdx].atk.toFixed(0)} heroDef=${effectiveDHeroStats[targetIdx].def.toFixed(0)}`);
       }
     }
 
@@ -882,6 +884,7 @@ export function sim1(
     dLossRate: dTotal0 > 0 ? 1 - dLeft / dTotal0 : 0,
     aCasualty,
     dCasualty,
+    debugT1,
     logs,
   };
 }

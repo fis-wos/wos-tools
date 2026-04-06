@@ -528,6 +528,14 @@ function ResultDisplay({
             {latestRun.turns}ターンで
             {latestRun.winner === 'atk' ? '攻撃勝利' : latestRun.winner === 'def' ? '防御勝利' : '引き分け'}
           </div>
+          {latestRun.debugT1 && latestRun.debugT1.length > 0 && (
+            <div className="mt-2 border-t border-wos-border pt-2">
+              <div className="text-[10px] font-bold text-text-secondary mb-1">T1デバッグ</div>
+              {latestRun.debugT1.map((line, i) => (
+                <div key={i} className="text-[9px] font-mono text-text-muted">{line}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
