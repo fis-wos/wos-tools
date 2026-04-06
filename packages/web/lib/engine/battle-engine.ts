@@ -762,6 +762,11 @@ export function sim1(
         aGemLethModByType[atkType][target]
       );
       dDmgThisTurn[target] += kills;
+
+      // Debug: log first turn details
+      if (turn === 1) {
+        console.log(`[T1 ATK] ${atkType}→${target}: kills=${kills}, troops=${aT[atkType]}, heroStats=`, effectiveAHeroStats[atkIdx], 'targetStats=', effectiveDHeroStats[targetIdx], 'gearMod=', aGearAtkMod, 'gemMod=', aGemLethModByType[atkType][target], 'skillMod=', { aDmgUp: aSkEff.selfMod.damageUp, dDefUp: dSkEff.selfMod.defenseUp, aOppDefDown: aSkEff.oppMod.defenseDown, dOppDmgDown: dSkEff.oppMod.damageDown });
+      }
     }
 
     // --- Each troop type on the defender side attacks ---
