@@ -229,28 +229,40 @@ function emptySkillEffect(): SkillEffect {
 }
 
 /**
- * Determine target based on type-advantage targeting.
+ * Front-line targeting system (confirmed by Kingshot combat analysis).
  *
- * Each troop type primarily attacks the type it has advantage over:
- *   盾(shield) → 槍(spear)  密集戦陣: +10%
- *   槍(spear)  → 弓(bow)    突撃: +10%
- *   弓(bow)    → 盾(shield) 遠距離打撃: +10%
+ * All troops attack the front-most surviving row:
+ *   Front: Shield(盾) → Mid: Spear(槍) → Back: Bow(弓)
  *
- * If the preferred target is gone, fall back to any surviving type.
- * This was confirmed by battle reports showing:
- *   - 槍 losses = 0 (only attacked by low-ATK shields)
- *   - 弓 losses = high (attacked by high-ATK spears)
- *   - 盾 losses = highest (attacked by highest-ATK bows)
+ * Exception — Ambusher: Spear has 20% chance to bypass front line
+ *   and attack Bow(弓) directly.
+ *
+ * Type advantage bonus (+10%) still applies when attacking the
+ *   advantaged type, even through front-line targeting:
+ *   盾→槍(+10%), 槍→弓(+10%), 弓→盾(+10%)
+ *
+ * Why 槍 losses ≈ 0 in battle reports:
+ *   - Shield attacks front(shield), not spear → spear is protected
+ *   - When shield is gone, all attack spear but spear has
+ *     already been barely touched
+ *   - Spear Ambusher (20%) attacks bow, reducing bow count
+ *   - Low-ATK shield can barely penetrate enemy DEF → minimal kills
  */
 function getTarget(
   attackerType: TroopType,
   enemyTroops: TroopCount
 ): TroopType | null {
-  // Primary target: type advantage (confirmed by battle reports)
-  const preferred = TYPE_ADVANTAGE[attackerType]; // shield→spear, spear→bow, bow→shield
-  if (enemyTroops[preferred] > 0) return preferred;
+  // Ambusher: spear has 20% chance to bypass front and hit bow
+  if (
+    attackerType === 'spear' &&
+    enemyTroops.shield > 0 &&
+    enemyTroops.bow > 0 &&
+    Math.random() < AMBUSHER_PROB
+  ) {
+    return 'bow';
+  }
 
-  // Fallback: attack any surviving troop type (front-line order)
+  // Front-line targeting: shield(front) → spear(mid) → bow(back)
   if (enemyTroops.shield > 0) return 'shield';
   if (enemyTroops.spear > 0) return 'spear';
   if (enemyTroops.bow > 0) return 'bow';
@@ -426,11 +438,24 @@ function calcKills(
 ): number {
   if (attackerCount <= 0 || targetCount <= 0) return 0;
 
-  // 英雄ベースステータスの比率（世代差を反映）
-  // 攻撃側のATK×殺傷力 / 防御側のDEF×HP → G12はG2より大幅に有利
-  const atkStat = Math.max((1 + attackerStats.atk / 100) * (1 + attackerStats.leth / 100), 0.01);
-  const defStat = Math.max((1 + targetStats.def / 100) * (1 + targetStats.hp / 100), 0.01);
-  const heroStatRatio = atkStat / defStat;
+  // Kingshot式ダメージ計算:
+  // ATK = 敵のDEFを貫通する力（ATK - DEF、最低0.1）
+  // Leth = 敵のHPを削る力（Leth / HP）
+  // kills = C × sqrt(兵数) × penetration × lethFactor × SkillMod × TypeBonus
+
+  // 兵士基礎ステ × 英雄バフ%
+  const atkBase = TROOP_BASE_STATS[attackerType][atkTroopTier];
+  const defBase = TROOP_BASE_STATS[targetType][defTroopTier];
+
+  const effAtk = atkBase.atk * (1 + attackerStats.atk / 100);
+  const effDef = defBase.def * (1 + targetStats.def / 100);
+  const effLeth = atkBase.leth * (1 + attackerStats.leth / 100);
+  const effHp = defBase.hp * (1 + targetStats.hp / 100);
+
+  // ATKがDEFを貫通した分がダメージに（最低10%の貫通を保証）
+  const penetration = Math.max(effAtk / Math.max(effDef, 1), 0.1);
+  // 殺傷力がHPを上回るほどキル数が増える
+  const lethFactor = Math.max(effLeth / Math.max(effHp, 1), 0.1);
 
   // SkillMod = (attacker damageUp * attacker oppDefenseDown) / (defender defenseUp * defender oppDamageDown)
   const skillMod =
@@ -442,7 +467,8 @@ function calcKills(
   const rawKills =
     DAMAGE_COEFFICIENT *
     Math.sqrt(attackerCount) *
-    heroStatRatio *
+    penetration *
+    lethFactor *
     Math.max(skillMod, 0.01) *
     tBonus *
     gearAtkMod *

@@ -298,7 +298,7 @@ export const HEROES: Hero[] = [
   {
     id: 'greg',
     n: 'グレッグ',
-    g: 3,
+    g: 2,
     r: 'SSR',
     t: 'bow',
     img: IMG_BASE + '2023/05/greg.png',
