@@ -21,6 +21,16 @@ import {
   type TroopCount,
   runSimulation,
 } from '@/lib/engine/battle-engine';
+import {
+  CHIEF_GEAR_TIERS,
+  GEM_LEVELS,
+  calcChiefGearStats,
+  calcGemStats,
+} from '@/lib/engine/chief-gear';
+import {
+  HERO_GEAR_LEVELS,
+  calcHeroGearStats,
+} from '@/lib/engine/hero-gear';
 import { supabase } from '@/lib/supabase';
 
 // ── Constants ──
@@ -82,6 +92,13 @@ interface SideFormation {
   spearRatio: number;
   bowRatio: number;
   troopTier: TroopTier;
+  chiefGearTier: string;
+  gemLevel: number;
+  heroGearLevel: string;
+  petAtk: number;
+  petDef: number;
+  petLeth: number;
+  petHp: number;
 }
 
 const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number }[] = [
@@ -97,6 +114,13 @@ function emptyFormation(): SideFormation {
     leaders: [null, null, null],
     riders: [],
     totalTroops: 1800000,
+    chiefGearTier: 'myth_t4_s3',
+    gemLevel: 16,
+    heroGearLevel: 'gold_max',
+    petAtk: 333.5,
+    petDef: 333.5,
+    petLeth: 475.96,
+    petHp: 475.96,
     shieldRatio: 5,
     spearRatio: 0,
     bowRatio: 5,
@@ -695,6 +719,14 @@ export default function SimulatorPage() {
             dRiders: defF.riders,
             aTroopTier: atkF.troopTier,
             dTroopTier: defF.troopTier,
+            aChiefGearTier: atkF.chiefGearTier,
+            dChiefGearTier: defF.chiefGearTier,
+            aGemLevel: atkF.gemLevel,
+            dGemLevel: defF.gemLevel,
+            aHeroGearLevel: atkF.heroGearLevel,
+            dHeroGearLevel: defF.heroGearLevel,
+            aPetStats: { atk: atkF.petAtk, def: atkF.petDef, leth: atkF.petLeth, hp: atkF.petHp },
+            dPetStats: { atk: defF.petAtk, def: defF.petDef, leth: defF.petLeth, hp: defF.petHp },
             runs,
           });
 
@@ -713,6 +745,10 @@ export default function SimulatorPage() {
               troopRatio: { shield: f.shieldRatio, spear: f.spearRatio, bow: f.bowRatio },
               totalTroops: f.totalTroops,
               troopTier: f.troopTier,
+              chiefGearTier: f.chiefGearTier,
+              gemLevel: f.gemLevel,
+              heroGearLevel: f.heroGearLevel,
+              petStats: { atk: f.petAtk, def: f.petDef, leth: f.petLeth, hp: f.petHp },
             });
 
             const details = {
@@ -893,6 +929,154 @@ export default function SimulatorPage() {
                   >
                     {tier.label}
                   </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chief Gear selector */}
+            <div className="mb-4">
+              <label className="mb-1 block text-xs text-text-muted">
+                領主装備
+              </label>
+              <select
+                value={currentFormation.chiefGearTier}
+                onChange={(e) =>
+                  setFormations((prev) => ({
+                    ...prev,
+                    [activeSide]: { ...prev[activeSide], chiefGearTier: e.target.value },
+                  }))
+                }
+                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
+              >
+                {CHIEF_GEAR_TIERS.map((tier) => (
+                  <option key={tier.id} value={tier.id}>
+                    {tier.name}
+                  </option>
+                ))}
+              </select>
+              {(() => {
+                const gearStats = calcChiefGearStats(currentFormation.chiefGearTier);
+                return gearStats.atk > 0 ? (
+                  <div className="mt-1 text-[10px] text-text-muted">
+                    ATK+{gearStats.atk.toFixed(0)}%, DEF+{gearStats.def.toFixed(0)}%
+                  </div>
+                ) : null;
+              })()}
+            </div>
+
+            {/* Gem Level selector */}
+            <div className="mb-4">
+              <label className="mb-1 block text-xs text-text-muted">
+                宝石Lv
+              </label>
+              <select
+                value={currentFormation.gemLevel}
+                onChange={(e) =>
+                  setFormations((prev) => ({
+                    ...prev,
+                    [activeSide]: { ...prev[activeSide], gemLevel: Number(e.target.value) },
+                  }))
+                }
+                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
+              >
+                {GEM_LEVELS.map((gem) => (
+                  <option key={gem.lv} value={gem.lv}>
+                    {gem.name}
+                  </option>
+                ))}
+              </select>
+              {(() => {
+                const gemStats = calcGemStats(currentFormation.gemLevel);
+                return gemStats.leth > 0 ? (
+                  <div className="mt-1 text-[10px] text-text-muted">
+                    殺傷力+{gemStats.leth}%, HP+{gemStats.hp}%
+                  </div>
+                ) : null;
+              })()}
+            </div>
+
+            {/* Hero Gear selector */}
+            <div className="mb-4">
+              <label className="mb-1 block text-xs text-text-muted">
+                英雄装備
+              </label>
+              <select
+                value={currentFormation.heroGearLevel}
+                onChange={(e) =>
+                  setFormations((prev) => ({
+                    ...prev,
+                    [activeSide]: { ...prev[activeSide], heroGearLevel: e.target.value },
+                  }))
+                }
+                className="w-full rounded-lg border border-wos-border bg-wos-dark px-3 py-2 text-sm text-text-primary outline-none focus:border-def-blue/50"
+              >
+                {HERO_GEAR_LEVELS.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+              {(() => {
+                const hgStats = calcHeroGearStats(currentFormation.heroGearLevel);
+                return hgStats.leth > 0 ? (
+                  <div className="mt-1 text-[10px] text-text-muted">
+                    殺傷力+{hgStats.leth}%, HP+{hgStats.hp}%, ATK+{hgStats.atk}%, DEF+{hgStats.def}%
+                  </div>
+                ) : null;
+              })()}
+            </div>
+
+            {/* Pet Stats */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-text-muted">
+                  ペット強化（手動入力）
+                </label>
+                <button
+                  type="button"
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-wos-border bg-wos-dark text-text-muted hover:text-text-primary"
+                  onClick={() =>
+                    setFormations((prev) => ({
+                      ...prev,
+                      [activeSide]: {
+                        ...prev[activeSide],
+                        petAtk: 333.5,
+                        petDef: 333.5,
+                        petLeth: 475.96,
+                        petHp: 475.96,
+                      },
+                    }))
+                  }
+                >
+                  MAX
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {([
+                  { key: 'petAtk' as const, label: 'ATK' },
+                  { key: 'petDef' as const, label: 'DEF' },
+                  { key: 'petLeth' as const, label: '殺傷力' },
+                  { key: 'petHp' as const, label: 'HP' },
+                ] as const).map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-1">
+                    <span className="text-[10px] text-text-muted w-8 shrink-0">{label}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={currentFormation[key]}
+                      onChange={(e) =>
+                        setFormations((prev) => ({
+                          ...prev,
+                          [activeSide]: {
+                            ...prev[activeSide],
+                            [key]: parseFloat(e.target.value) || 0,
+                          },
+                        }))
+                      }
+                      className="w-full rounded border border-wos-border bg-wos-dark px-2 py-1 text-[11px] text-text-primary outline-none focus:border-def-blue/50"
+                    />
+                    <span className="text-[10px] text-text-muted">%</span>
+                  </div>
                 ))}
               </div>
             </div>

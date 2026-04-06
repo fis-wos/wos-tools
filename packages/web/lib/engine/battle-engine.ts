@@ -36,6 +36,8 @@
 import { type Hero, type Skill, type TroopType } from './heroes';
 import { type TroopStats, type SkillMod, type HeroConfig, emptySkillMod } from './hero-stats';
 import { TROOP_BASE_STATS, type TroopTier } from './troop-skills';
+import { calcChiefGearStats, calcGemStats } from './chief-gear';
+import { calcHeroGearStats } from './hero-gear';
 
 // ── Type definitions ──
 
@@ -128,6 +130,22 @@ export interface SimConfig {
   aHospitalCap?: number;
   /** Hospital capacity for defender (default: Infinity) */
   dHospitalCap?: number;
+  /** Chief gear tier ID for attacker (default: 'myth_t4_s3') */
+  aChiefGearTier?: string;
+  /** Chief gear tier ID for defender (default: 'myth_t4_s3') */
+  dChiefGearTier?: string;
+  /** Gem level for attacker (default: 16) */
+  aGemLevel?: number;
+  /** Gem level for defender (default: 16) */
+  dGemLevel?: number;
+  /** Hero gear level ID for attacker (default: 'gold_max') */
+  aHeroGearLevel?: string;
+  /** Hero gear level ID for defender (default: 'gold_max') */
+  dHeroGearLevel?: string;
+  /** Pet stats for attacker */
+  aPetStats?: { atk: number; def: number; leth: number; hp: number };
+  /** Pet stats for defender */
+  dPetStats?: { atk: number; def: number; leth: number; hp: number };
   runs?: number;
 }
 
@@ -388,14 +406,15 @@ function calcKills(
   targetType: TroopType,
   targetCount: number,
   atkTroopTier: TroopTier = 11,
-  defTroopTier: TroopTier = 11
+  defTroopTier: TroopTier = 11,
+  gearAtkMod: number = 1,
+  gemLethMod: number = 1
 ): number {
   if (attackerCount <= 0 || targetCount <= 0) return 0;
 
   // ベースステータスは両者同一MAXと仮定してキャンセル
   // 差がつくのはスキル効果・兵数・三すくみのみ
-  // (実際のゲームでは領主装備/宝石/専門家/島等で差がつくが、
-  //  シミュレーターでは再現不可能なため無視)
+  // 領主装備と宝石の差分はgearAtkMod/gemLethModで反映
 
   // SkillMod = (attacker damageUp * attacker oppDefenseDown) / (defender defenseUp * defender oppDamageDown)
   const skillMod =
@@ -409,6 +428,8 @@ function calcKills(
     Math.sqrt(attackerCount) *
     Math.max(skillMod, 0.01) *
     tBonus *
+    gearAtkMod *
+    gemLethMod *
     jitter();
 
   return Math.min(Math.max(Math.floor(rawKills), 0), targetCount);
@@ -475,13 +496,41 @@ export function sim1(
   aHospitalCap: number = Infinity,
   dHospitalCap: number = Infinity,
   aTroopTier: TroopTier = 11,
-  dTroopTier: TroopTier = 11
+  dTroopTier: TroopTier = 11,
+  aChiefGearTier: string = 'myth_t4_s3',
+  dChiefGearTier: string = 'myth_t4_s3',
+  aGemLevel: number = 16,
+  dGemLevel: number = 16,
+  aHeroGearLevel: string = 'gold_max',
+  dHeroGearLevel: string = 'gold_max',
+  aPetStats: { atk: number; def: number; leth: number; hp: number } = { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 },
+  dPetStats: { atk: number; def: number; leth: number; hp: number } = { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 }
 ): SimResult {
   const aT = cloneTroops(aTroopsInit);
   const dT = cloneTroops(dTroopsInit);
   const aTotal0 = totalTroops(aT);
   const dTotal0 = totalTroops(dT);
   const logs: BattleLog[] = [];
+
+  // Chief gear and gem modifiers (differential between attacker and defender)
+  const atkGear = calcChiefGearStats(aChiefGearTier);
+  const defGear = calcChiefGearStats(dChiefGearTier);
+  const atkGem = calcGemStats(aGemLevel);
+  const defGem = calcGemStats(dGemLevel);
+  const atkHeroGear = calcHeroGearStats(aHeroGearLevel);
+  const defHeroGear = calcHeroGearStats(dHeroGearLevel);
+
+  // Pet modifiers (same method as chief gear / gems)
+  const aPetAtkMod = (1 + (aPetStats.atk + aPetStats.leth) / 100) / (1 + (dPetStats.def + dPetStats.hp) / 100);
+  const dPetAtkMod = (1 + (dPetStats.atk + dPetStats.leth) / 100) / (1 + (aPetStats.def + aPetStats.hp) / 100);
+
+  // Attacker's gear advantage when attacking defender
+  // Hero gear ATK/leth boost attacker's offense, DEF/hp boost defender's defense
+  const aGearAtkMod = (1 + (atkGear.atk + atkHeroGear.atk) / 100) / (1 + (defGear.def + defHeroGear.def) / 100) * aPetAtkMod;
+  const aGemLethMod = (1 + (atkGem.leth + atkHeroGear.leth) / 100) / (1 + (defGem.hp + defHeroGear.hp) / 100);
+  // Defender's gear advantage when attacking attacker
+  const dGearAtkMod = (1 + (defGear.atk + defHeroGear.atk) / 100) / (1 + (atkGear.def + atkHeroGear.def) / 100) * dPetAtkMod;
+  const dGemLethMod = (1 + (defGem.leth + defHeroGear.leth) / 100) / (1 + (atkGem.hp + atkHeroGear.hp) / 100);
 
   let turn = 0;
 
@@ -525,7 +574,9 @@ export function sim1(
         target,
         dT[target],
         aTroopTier,
-        dTroopTier
+        dTroopTier,
+        aGearAtkMod,
+        aGemLethMod
       );
       dDmgThisTurn[target] += kills;
     }
@@ -552,7 +603,9 @@ export function sim1(
         target,
         aT[target],
         dTroopTier,
-        aTroopTier
+        aTroopTier,
+        dGearAtkMod,
+        dGemLethMod
       );
       aDmgThisTurn[target] += kills;
     }
@@ -752,7 +805,15 @@ export function runSimulation(config: SimConfig): SimAggregateResult {
       config.aHospitalCap ?? Infinity,
       config.dHospitalCap ?? Infinity,
       config.aTroopTier ?? 11,
-      config.dTroopTier ?? 11
+      config.dTroopTier ?? 11,
+      config.aChiefGearTier ?? 'myth_t4_s3',
+      config.dChiefGearTier ?? 'myth_t4_s3',
+      config.aGemLevel ?? 16,
+      config.dGemLevel ?? 16,
+      config.aHeroGearLevel ?? 'gold_max',
+      config.dHeroGearLevel ?? 'gold_max',
+      config.aPetStats ?? { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 },
+      config.dPetStats ?? { atk: 333.5, def: 333.5, leth: 475.96, hp: 475.96 }
     );
 
     results.push(result);
