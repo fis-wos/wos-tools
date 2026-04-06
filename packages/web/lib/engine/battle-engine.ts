@@ -284,7 +284,8 @@ function typeBonus(attackerType: TroopType, targetType: TroopType): number {
 export function evSk(
   leaders: Hero[],
   riders: Hero[],
-  turnNumber: number = 1
+  turnNumber: number = 1,
+  troopRatios?: { shield: number; spear: number; bow: number }
 ): SkillEffect {
   const effect = emptySkillEffect();
 
@@ -301,39 +302,48 @@ export function evSk(
   let lethDebufSum = 0;      // 敵殺傷力低下 (-> oppDamageDown variant)
   let extraAtkSum = 0;       // 追加攻撃 (-> damageUp加算)
 
+  // 兵比から各兵種の割合を計算（target限定スキルの按分用）
+  const ratioTotal = troopRatios ? (troopRatios.shield + troopRatios.spear + troopRatios.bow) || 1 : 1;
+  const typeWeight = (target?: string): number => {
+    if (!target || target === 'all' || target === 'enemy' || !troopRatios) return 1.0;
+    const r = troopRatios[target as TroopType] ?? 0;
+    return r / ratioTotal; // 例: 盾50%なら0.5、槍0%なら0
+  };
+
   const processSkill = (skill: Skill): void => {
     let fires = false;
     if (skill.tp === 'always') {
       fires = true;
     } else if (skill.tp === 'periodic') {
-      // N回/Nターン毎に1回発動（period=3なら3ターンに1回）
       const period = skill.period || 1;
       fires = (turnNumber % period === 0);
     } else {
-      // prob型: 確率で発動
       fires = Math.random() < skill.prob;
     }
     if (!fires) return;
 
-    // 攻撃系バフ
-    if (skill.atkDmgBuf) atkDmgBufSum += skill.atkDmgBuf;
-    if (skill.atkBuf) atkBufSum += skill.atkBuf;
-    if (skill.lethBuf) lethBufSum += skill.lethBuf;
-    if (skill.extraAtk) extraAtkSum += skill.extraAtk;
-    // 防御系バフ
-    if (skill.defBuf) defBufSum += skill.defBuf;
-    if (skill.hpBuf) hpBufSum += skill.hpBuf;
-    if (skill.defStatBuf) defStatBufSum += skill.defStatBuf;
-    // 敵デバフ
-    if (skill.atkDebuf) atkDebufSum += skill.atkDebuf;
-    if (skill.defDebuf) defDebufSum += skill.defDebuf;
-    if (skill.atkStatDebuf) atkStatDebufSum += skill.atkStatDebuf;
-    if (skill.lethDebuf) lethDebufSum += skill.lethDebuf;
-    // その他
-    if (skill.dotDmg) effect.dotDmg += skill.dotDmg;
-    if (skill.reflectBuf) effect.reflectBuf += skill.reflectBuf;
+    // 兵種限定スキルは兵比で按分
+    // 例: target='shield', atkDmgBuf=1.0, 兵比5:0:5 → 1.0×0.5=0.5
+    const w = typeWeight(skill.target);
 
-    // Stun: apply to all enemy troop types for simplicity
+    // 攻撃系バフ
+    if (skill.atkDmgBuf) atkDmgBufSum += skill.atkDmgBuf * w;
+    if (skill.atkBuf) atkBufSum += skill.atkBuf * w;
+    if (skill.lethBuf) lethBufSum += skill.lethBuf * w;
+    if (skill.extraAtk) extraAtkSum += skill.extraAtk * w;
+    // 防御系バフ
+    if (skill.defBuf) defBufSum += skill.defBuf * w;
+    if (skill.hpBuf) hpBufSum += skill.hpBuf * w;
+    if (skill.defStatBuf) defStatBufSum += skill.defStatBuf * w;
+    // 敵デバフ（target='enemy'は常に1.0）
+    if (skill.atkDebuf) atkDebufSum += skill.atkDebuf * w;
+    if (skill.defDebuf) defDebufSum += skill.defDebuf * w;
+    if (skill.atkStatDebuf) atkStatDebufSum += skill.atkStatDebuf * w;
+    if (skill.lethDebuf) lethDebufSum += skill.lethDebuf * w;
+    // その他
+    if (skill.dotDmg) effect.dotDmg += skill.dotDmg * w;
+    if (skill.reflectBuf) effect.reflectBuf += skill.reflectBuf * w;
+
     if (skill.stun) {
       for (let i = 0; i < 3; i++) {
         effect.stun[i] = Math.max(effect.stun[i], skill.stun);
@@ -416,9 +426,11 @@ function calcKills(
 ): number {
   if (attackerCount <= 0 || targetCount <= 0) return 0;
 
-  // ベースステータスは両者同一MAXと仮定してキャンセル
-  // 差がつくのはスキル効果・兵数・三すくみのみ
-  // 領主装備と宝石の差分はgearAtkMod/gemLethModで反映
+  // 英雄ベースステータスの比率（世代差を反映）
+  // 攻撃側のATK×殺傷力 / 防御側のDEF×HP → G12はG2より大幅に有利
+  const atkStat = Math.max((1 + attackerStats.atk / 100) * (1 + attackerStats.leth / 100), 0.01);
+  const defStat = Math.max((1 + targetStats.def / 100) * (1 + targetStats.hp / 100), 0.01);
+  const heroStatRatio = atkStat / defStat;
 
   // SkillMod = (attacker damageUp * attacker oppDefenseDown) / (defender defenseUp * defender oppDamageDown)
   const skillMod =
@@ -430,6 +442,7 @@ function calcKills(
   const rawKills =
     DAMAGE_COEFFICIENT *
     Math.sqrt(attackerCount) *
+    heroStatRatio *
     Math.max(skillMod, 0.01) *
     tBonus *
     gearAtkMod *
@@ -562,8 +575,8 @@ export function sim1(
     turn++;
 
     // Evaluate skills each turn (re-roll probabilities)
-    const aSkEff = evSk(aLeaders, aRiders, turn);
-    const dSkEff = evSk(dLeaders, dRiders, turn);
+    const aSkEff = evSk(aLeaders, aRiders, turn, aTroopsInit);
+    const dSkEff = evSk(dLeaders, dRiders, turn, dTroopsInit);
 
     // Simultaneous damage accumulation
     const aDmgThisTurn = emptyTroopCount(); // damage to attacker
