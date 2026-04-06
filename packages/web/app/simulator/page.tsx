@@ -701,6 +701,18 @@ export default function SimulatorPage() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [gearGemModalSide, setGearGemModalSide] = useState<Side | null>(null);
 
+  // おすすめ編成 state
+  const [isRecommending, setIsRecommending] = useState(false);
+  const [recommendProgress, setRecommendProgress] = useState<{ current: number; total: number } | null>(null);
+  const [recommendations, setRecommendations] = useState<{
+    shield: Hero;
+    spear: Hero;
+    bow: Hero;
+    winRate: number;
+    avgTurns: number;
+    riders: Hero[];
+  }[]>([]);
+
   // カウンターページからのプリセット読み込み
   useEffect(() => {
     try {
@@ -891,6 +903,145 @@ export default function SimulatorPage() {
           bowRatio: preset.bow,
         },
       }));
+    },
+    [activeSide]
+  );
+
+  // ライダーおすすめ: リーダー以外のSSR英雄のS1スキルを評価してTop4
+  const recommendRiders = useCallback((leaders: Hero[]): Hero[] => {
+    const leaderIds = new Set(leaders.map(h => h.id));
+    const candidates = HEROES.filter(h => !leaderIds.has(h.id) && h.s1);
+
+    const scored = candidates.map(h => {
+      const s = h.s1!;
+      let score = 0;
+      score += (s.atkDmgBuf || 0) * 100;
+      score += (s.atkBuf || 0) * 100;
+      score += (s.lethBuf || 0) * 80;
+      score += (s.defBuf || 0) * 60;
+      score += (s.hpBuf || 0) * 60;
+      score += (s.atkDebuf || 0) * 80;
+      score += (s.defDebuf || 0) * 80;
+      score += (s.lethDebuf || 0) * 70;
+      score += (s.atkStatDebuf || 0) * 70;
+      return { hero: h, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 4).map(s => s.hero);
+  }, []);
+
+  // おすすめ編成検索
+  const findRecommendedFormation = useCallback(async () => {
+    setIsRecommending(true);
+    setRecommendations([]);
+    setRecommendProgress(null);
+
+    // setTimeoutでUI更新を先に行う
+    await new Promise(r => setTimeout(r, 50));
+
+    const myTroops = formationToTroopCount(currentFormation);
+
+    // 全世代SSR英雄を対象（兵比0でもスキル目的で低世代を採用する戦略あり）
+    // 例: 5:0:5でミア(G3槍)を採用 → 槍ステ低いが全兵種バフスキルが強力
+    const topShield = HEROES.filter(h => h.r === 'SSR' && h.t === 'shield');
+    const topSpear = HEROES.filter(h => h.r === 'SSR' && h.t === 'spear');
+    const topBow = HEROES.filter(h => h.r === 'SSR' && h.t === 'bow');
+
+    // デフォルト敵 (G12ミラー)
+    const defaultEnemyLeaders = [
+      HEROES.find(h => h.id === 'hervil')!,
+      HEROES.find(h => h.id === 'carol')!,
+      HEROES.find(h => h.id === 'laizia')!,
+    ];
+    const dConfig = defaultHeroConfig();
+    const dHeroStats = calcHeroStats(
+      defaultEnemyLeaders.map(hero => ({ hero, config: dConfig })),
+      activeSide !== 'atk'
+    );
+
+    const results: { shield: Hero; spear: Hero; bow: Hero; winRate: number; avgTurns: number }[] = [];
+    const total = topShield.length * topSpear.length * topBow.length;
+    let count = 0;
+
+    for (const sh of topShield) {
+      for (const sp of topSpear) {
+        for (const bo of topBow) {
+          count++;
+
+          const config = defaultHeroConfig();
+          const aHeroStats = calcHeroStats(
+            [
+              { hero: sh, config },
+              { hero: sp, config },
+              { hero: bo, config },
+            ],
+            activeSide === 'atk'
+          );
+
+          const sim = runSimulation({
+            aTroops: myTroops,
+            dTroops: myTroops,
+            aHeroStats,
+            dHeroStats,
+            aLeaders: [sh, sp, bo],
+            aRiders: [],
+            dLeaders: defaultEnemyLeaders,
+            dRiders: [],
+            aTroopTier: currentFormation.troopTier,
+            dTroopTier: currentFormation.troopTier,
+            aChiefGearTier: currentFormation.chiefGearTier,
+            dChiefGearTier: currentFormation.chiefGearTier,
+            aGems: currentFormation.gems,
+            dGems: currentFormation.gems,
+            aHeroGearLevel: currentFormation.heroGearLevel,
+            dHeroGearLevel: currentFormation.heroGearLevel,
+            runs: 10,
+          });
+
+          const winRate = sim.atkWins / sim.runs;
+          results.push({
+            shield: sh,
+            spear: sp,
+            bow: bo,
+            winRate,
+            avgTurns: sim.avgTurns,
+          });
+
+          // UIフリーズ防止
+          if (count % 20 === 0) {
+            setRecommendProgress({ current: count, total });
+            await new Promise(r => setTimeout(r, 0));
+          }
+        }
+      }
+    }
+
+    // 勝率でソート、Top5
+    results.sort((a, b) => b.winRate - a.winRate || a.avgTurns - b.avgTurns);
+    const top5 = results.slice(0, 5).map(r => ({
+      ...r,
+      riders: recommendRiders([r.shield, r.spear, r.bow]),
+    }));
+
+    setRecommendations(top5);
+    setRecommendProgress(null);
+    setIsRecommending(false);
+  }, [currentFormation, activeSide, recommendRiders]);
+
+  // おすすめ編成をセット
+  const applyRecommendation = useCallback(
+    (rec: { shield: Hero; spear: Hero; bow: Hero; riders: Hero[] }) => {
+      setFormations((prev) => ({
+        ...prev,
+        [activeSide]: {
+          ...prev[activeSide],
+          leaders: [rec.shield, rec.spear, rec.bow],
+          riders: rec.riders,
+        },
+      }));
+      // 結果をクリア
+      setRecommendations([]);
     },
     [activeSide]
   );
@@ -1500,6 +1651,101 @@ export default function SimulatorPage() {
                   ))}
                 </div>
               </div>
+
+              {/* おすすめ編成ボタン */}
+              <div className="mt-3">
+                <button
+                  onClick={findRecommendedFormation}
+                  disabled={isRecommending}
+                  className="w-full rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-3 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100"
+                >
+                  {isRecommending ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      計算中...
+                    </span>
+                  ) : (
+                    '\uD83C\uDFAF この兵比でおすすめ編成を検索'
+                  )}
+                </button>
+                {isRecommending && recommendProgress && (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-[10px] text-text-muted mb-1">
+                      <span>進捗</span>
+                      <span>{recommendProgress.current}/{recommendProgress.total}</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-wos-border overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-200"
+                        style={{ width: `${(recommendProgress.current / recommendProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* おすすめ編成結果 */}
+              {recommendations.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <div className="text-xs font-bold text-gold-dark">
+                    おすすめ編成 Top5
+                  </div>
+                  {recommendations.map((rec, idx) => (
+                    <div
+                      key={`rec-${idx}`}
+                      className={`rounded-lg border p-3 transition-colors ${
+                        idx === 0
+                          ? 'border-amber-400/60 bg-gradient-to-br from-amber-50 to-yellow-50'
+                          : 'border-wos-border bg-white/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-bold ${idx === 0 ? 'text-amber-600' : 'text-text-primary'}`}>
+                          {idx + 1}位 {idx === 0 ? '\u2B50' : ''} 勝率{Math.round(rec.winRate * 100)}%
+                        </span>
+                        <span className="text-[10px] text-text-muted">
+                          平均{rec.avgTurns.toFixed(0)}T
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[9px] text-text-muted font-bold">Leader:</span>
+                        <div className="flex items-center gap-1">
+                          <HeroAvatar hero={rec.shield} size="sm" />
+                          <span className={`text-[10px] ${TROOP_TEXT_COLORS.shield}`}>{rec.shield.n}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <HeroAvatar hero={rec.spear} size="sm" />
+                          <span className={`text-[10px] ${TROOP_TEXT_COLORS.spear}`}>{rec.spear.n}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <HeroAvatar hero={rec.bow} size="sm" />
+                          <span className={`text-[10px] ${TROOP_TEXT_COLORS.bow}`}>{rec.bow.n}</span>
+                        </div>
+                      </div>
+                      {rec.riders.length > 0 && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <span className="text-[9px] text-text-muted font-bold">Rider:</span>
+                          {rec.riders.map((rider, ri) => (
+                            <div key={ri} className="flex items-center gap-0.5">
+                              <HeroAvatar hero={rider} size="sm" />
+                              <span className={`text-[9px] ${TROOP_TEXT_COLORS[rider.t]}`}>{rider.n}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => applyRecommendation(rec)}
+                        className="w-full rounded-md bg-sky-500/20 py-1.5 text-[11px] font-medium text-sky-600 transition-colors hover:bg-sky-500/30"
+                      >
+                        この編成をセット
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
