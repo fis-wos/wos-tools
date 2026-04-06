@@ -269,10 +269,12 @@ function getTarget(
     return 'bow';
   }
 
-  // Front-line targeting: shield(front) → spear(mid) → bow(back)
+  // Front-line targeting: shield(front) → bow(back) → spear(mid)
+  // Confirmed by Kingshot analysis: "Cavalry often survive because they draw less aggro until late"
+  // Shield absorbs all attacks → when shield dies, bow becomes target → spear survives longest
   if (enemyTroops.shield > 0) return 'shield';
-  if (enemyTroops.spear > 0) return 'spear';
   if (enemyTroops.bow > 0) return 'bow';
+  if (enemyTroops.spear > 0) return 'spear';
   return null;
 }
 
