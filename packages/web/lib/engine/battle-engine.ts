@@ -22,6 +22,10 @@
  *   - Rider stats/equipment are irrelevant (skill effect only)
  *   - Duplicate heroes: only the highest-level instance counts
  *   - Top 4 rider skills selected from joiners
+ *   - Duplicate skill TYPE diminishing: same effect type (e.g., atkDmgBuf)
+ *     from different heroes retains ×0.93^n per additional occurrence.
+ *     Detection is by effect type, NOT hero identity.
+ *     (e.g., Jessie atkDmgBuf + Jacel atkDmgBuf = duplicate)
  *
  * Casualty mechanics:
  *   - Attacker loss: 27% dead / 13% severe wound / 60% light wound
@@ -396,6 +400,82 @@ export function evSk(
     }
   }
 
+  // ── Duplicate skill type diminishing (重複スキル減衰) ──
+  // Same effect type from different sources: ×0.93^n (n = prior occurrence count)
+  // e.g., leader atkDmgBuf + rider atkDmgBuf → rider's effect ×0.93
+  // Detected by skill effect TYPE, not hero identity
+  const DUPLICATE_RETAIN = 0.93;
+
+  // Count effect types already seen from leader skills
+  const effectTypeCounts: Record<string, number> = {};
+  const countLeaderEffects = (skill: Skill) => {
+    const types = ['atkDmgBuf', 'atkBuf', 'lethBuf', 'extraAtk',
+      'defBuf', 'hpBuf', 'defStatBuf',
+      'atkDebuf', 'defDebuf', 'atkStatDebuf', 'lethDebuf'] as const;
+    for (const t of types) {
+      if (skill[t]) effectTypeCounts[t] = (effectTypeCounts[t] || 0) + 1;
+    }
+  };
+  for (const hero of leaders) {
+    for (const s of [hero.s1, hero.s2, hero.s3]) {
+      if (s) countLeaderEffects(s);
+    }
+  }
+
+  // Process rider S1 with diminishing for duplicate effect types
+  const processRiderSkill = (skill: Skill): void => {
+    let fires = false;
+    if (skill.tp === 'always') {
+      fires = true;
+    } else if (skill.tp === 'periodic') {
+      const period = skill.period || 1;
+      fires = (turnNumber % period === 0);
+    } else {
+      fires = Math.random() < skill.prob;
+    }
+    if (!fires) return;
+
+    const w = typeWeight(skill.target);
+
+    // Apply diminishing: multiply by 0.93^(prior count of same effect type)
+    const dim = (effectType: string): number => {
+      const n = effectTypeCounts[effectType] || 0;
+      return Math.pow(DUPLICATE_RETAIN, n);
+    };
+
+    // 攻撃系バフ
+    if (skill.atkDmgBuf) atkDmgBufSum += skill.atkDmgBuf * w * dim('atkDmgBuf');
+    if (skill.atkBuf) atkBufSum += skill.atkBuf * w * dim('atkBuf');
+    if (skill.lethBuf) lethBufSum += skill.lethBuf * w * dim('lethBuf');
+    if (skill.extraAtk) extraAtkSum += skill.extraAtk * w * dim('extraAtk');
+    // 防御系バフ
+    if (skill.defBuf) defBufSum += skill.defBuf * w * dim('defBuf');
+    if (skill.hpBuf) hpBufSum += skill.hpBuf * w * dim('hpBuf');
+    if (skill.defStatBuf) defStatBufSum += skill.defStatBuf * w * dim('defStatBuf');
+    // 敵デバフ
+    if (skill.atkDebuf) atkDebufSum += skill.atkDebuf * w * dim('atkDebuf');
+    if (skill.defDebuf) defDebufSum += skill.defDebuf * w * dim('defDebuf');
+    if (skill.atkStatDebuf) atkStatDebufSum += skill.atkStatDebuf * w * dim('atkStatDebuf');
+    if (skill.lethDebuf) lethDebufSum += skill.lethDebuf * w * dim('lethDebuf');
+    // その他
+    if (skill.dotDmg) effect.dotDmg += skill.dotDmg * w;
+    if (skill.reflectBuf) effect.reflectBuf += skill.reflectBuf * w;
+
+    if (skill.stun) {
+      for (let i = 0; i < 3; i++) {
+        effect.stun[i] = Math.max(effect.stun[i], skill.stun);
+      }
+    }
+
+    // Increment counts for this rider's effect types
+    const types = ['atkDmgBuf', 'atkBuf', 'lethBuf', 'extraAtk',
+      'defBuf', 'hpBuf', 'defStatBuf',
+      'atkDebuf', 'defDebuf', 'atkStatDebuf', 'lethDebuf'] as const;
+    for (const t of types) {
+      if (skill[t]) effectTypeCounts[t] = (effectTypeCounts[t] || 0) + 1;
+    }
+  };
+
   // Riders: S1 only, deduplicated by hero ID (keep first occurrence)
   const usedHeroIds = new Set<string>();
   // Also collect leader IDs to avoid duplicate hero buffs
@@ -418,7 +498,7 @@ export function evSk(
     .slice(0, MAX_RIDER_SKILLS);
 
   for (const { skill } of selectedRiderSkills) {
-    processSkill(skill);
+    processRiderSkill(skill);
   }
 
   // Convert additive accumulators to multiplicative SkillMod

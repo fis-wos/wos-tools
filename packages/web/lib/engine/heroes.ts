@@ -880,8 +880,8 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/05/sergey.png',
     dS: 8, aS: 5, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 20, lbl: 'プロテクト: 被ダメ-20%' },
-    s2: { tp: 'always' as SkillTrigger, prob: 1, atkStatDebuf: 20, lbl: '敵攻撃-20%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 0.20, lbl: 'プロテクト: 被ダメ-20%' },
+    s2: { tp: 'always' as SkillTrigger, prob: 1, atkStatDebuf: 0.20, lbl: '敵攻撃-20%' },
     s3: null, sd: [], sa: []
   },
   {
@@ -889,8 +889,8 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/05/patrick.png',
     dS: 7, aS: 7, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, hpBuf: 25, lbl: '幸せグルメ: HP+25%' },
-    s2: { tp: 'always' as SkillTrigger, prob: 1, atkBuf: 25, lbl: '攻撃力+25%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, hpBuf: 0.25, lbl: '幸せグルメ: HP+25%' },
+    s2: { tp: 'always' as SkillTrigger, prob: 1, atkBuf: 0.25, lbl: '攻撃力+25%' },
     s3: null, sd: [], sa: []
   },
   {
@@ -898,8 +898,8 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/05/jessie.png',
     dS: 6, aS: 9, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, atkDmgBuf: 25, lbl: '完全武装: 与ダメ+25%' },
-    s2: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 20, lbl: '被ダメ-20%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, atkDmgBuf: 0.25, lbl: '完全武装: 与ダメ+25%' },
+    s2: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 0.20, lbl: '被ダメ-20%' },
     s3: null, sd: [], sa: []
   },
   {
@@ -907,8 +907,8 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/05/bahiti.png',
     dS: 5, aS: 7, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 20, lbl: '危険予知: 被ダメ-20%' },
-    s2: { tp: 'prob' as SkillTrigger, prob: 0.50, atkDmgBuf: 50, lbl: '与ダメ+50%(50%)' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 0.20, lbl: '危険予知: 被ダメ-20%' },
+    s2: { tp: 'prob' as SkillTrigger, prob: 0.50, atkDmgBuf: 0.50, lbl: '与ダメ+50%(50%)' },
     s3: null, sd: [], sa: []
   },
   {
@@ -916,7 +916,7 @@ export const HEROES: Hero[] = [
     img: '/heroes/linsetsu.jpg',
     dS: 5, aS: 6, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, atkStatDebuf: 20, lbl: '威風八面: 敵攻撃-20%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, atkStatDebuf: 0.20, lbl: '威風八面: 敵攻撃-20%' },
     s2: null, s3: null, sd: [], sa: []
   },
   {
@@ -924,7 +924,7 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/10/1.jpg',
     dS: 5, aS: 8, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, atkDmgBuf: 25, lbl: '戦術演習: 与ダメ+25%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, atkDmgBuf: 0.25, lbl: '戦術演習: 与ダメ+25%' },
     s2: null, s3: null, sd: [], sa: []
   },
   {
@@ -932,7 +932,7 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2023/10/2.jpg',
     dS: 4, aS: 7, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, atkBuf: 25, lbl: '征伐の陣太鼓: 攻撃力+25%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, atkBuf: 0.25, lbl: '征伐の陣太鼓: 攻撃力+25%' },
     s2: null, s3: null, sd: [], sa: []
   },
   {
@@ -940,7 +940,7 @@ export const HEROES: Hero[] = [
     img: 'https://gom-s3-user-avatar.s3.us-west-2.amazonaws.com/wp-content/uploads/2024/05/3.png',
     dS: 5, aS: 5, aT: 0, dT: 0, glg: 0, gearBase: 0,
     gs: undefined,
-    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 20, lbl: '誘惑戦術: 敵与ダメ-20%' },
+    s1: { tp: 'always' as SkillTrigger, prob: 1, defBuf: 0.20, lbl: '誘惑戦術: 敵与ダメ-20%' },
     s2: null, s3: null, sd: [], sa: []
   },
   {
