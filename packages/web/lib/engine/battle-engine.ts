@@ -543,7 +543,7 @@ export function sim1(
   for (const aType of TROOP_TYPES) {
     aGemLethModByType[aType] = {};
     for (const dType of TROOP_TYPES) {
-      aGemLethModByType[aType][dType] = (1 + (atkGemByType[aType].leth + atkHeroGear.leth) / 100) / (1 + (defGemByType[dType].hp + defHeroGear.hp) / 100);
+      aGemLethModByType[aType][dType] = (1 + (atkGemByType[aType].leth + atkHeroGear.leth + aPetStats[petLethKey(aType as TroopType)]) / 100) / (1 + (defGemByType[dType].hp + defHeroGear.hp + dPetStats[petHpKey(dType as TroopType)]) / 100);
     }
   }
   // Defender's gear advantage when attacking attacker
@@ -552,7 +552,7 @@ export function sim1(
   for (const dType of TROOP_TYPES) {
     dGemLethModByType[dType] = {};
     for (const aType of TROOP_TYPES) {
-      dGemLethModByType[dType][aType] = (1 + (defGemByType[dType].leth + defHeroGear.leth) / 100) / (1 + (atkGemByType[aType].hp + atkHeroGear.hp) / 100);
+      dGemLethModByType[dType][aType] = (1 + (defGemByType[dType].leth + defHeroGear.leth + dPetStats[petLethKey(dType as TroopType)]) / 100) / (1 + (atkGemByType[aType].hp + atkHeroGear.hp + aPetStats[petHpKey(aType as TroopType)]) / 100);
     }
   }
 

@@ -605,23 +605,60 @@ function GearGemModal({
         </div>
 
         {/* Totals */}
-        <div className="mb-5 rounded-lg border border-wos-border/50 bg-wos-dark/50 p-3">
-          <div className="text-[10px] text-text-muted mb-1">合計ボーナス</div>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center">
-              <div className="text-shield-blue font-medium">🛡盾</div>
-              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.shield.leth}%</span></div>
-              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.shield.hp}%</span></div>
+        <div className="mb-5 rounded-lg border border-wos-border/50 bg-wos-dark/50 p-3 space-y-3">
+          <div className="text-[10px] text-text-muted mb-1">総合ステータス</div>
+
+          {/* Chief Gear */}
+          {gearStats.atk > 0 && (
+            <div>
+              <div className="text-[10px] text-text-muted mb-0.5">領主装備:</div>
+              <div className="text-xs text-text-primary pl-2">
+                ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-spear-orange font-medium">🔱槍</div>
-              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.spear.leth}%</span></div>
-              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.spear.hp}%</span></div>
+          )}
+
+          {/* Gem totals */}
+          <div>
+            <div className="text-[10px] text-text-muted mb-1">宝石合計:</div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="text-center">
+                <div className="text-shield-blue font-medium">🛡盾</div>
+                <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.shield.leth}%</span></div>
+                <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.shield.hp}%</span></div>
+              </div>
+              <div className="text-center">
+                <div className="text-spear-orange font-medium">🔱槍</div>
+                <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.spear.leth}%</span></div>
+                <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.spear.hp}%</span></div>
+              </div>
+              <div className="text-center">
+                <div className="text-bow-green font-medium">🏹弓</div>
+                <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.bow.leth}%</span></div>
+                <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.bow.hp}%</span></div>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-bow-green font-medium">🏹弓</div>
-              <div className="text-text-muted">殺傷 <span className="text-text-primary">+{gemTotals.bow.leth}%</span></div>
-              <div className="text-text-muted">HP <span className="text-text-primary">+{gemTotals.bow.hp}%</span></div>
+          </div>
+
+          {/* Combined totals */}
+          <div>
+            <div className="text-[10px] text-text-muted mb-1">装備+宝石 合計:</div>
+            <div className="text-xs pl-2 mb-1 text-text-primary">
+              ATK+{gearStats.atk.toFixed(0)}% DEF+{gearStats.def.toFixed(0)}%
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="text-center">
+                <div className="text-shield-blue text-text-muted">盾殺 <span className="text-text-primary">+{gemTotals.shield.leth}%</span></div>
+                <div className="text-shield-blue text-text-muted">盾HP <span className="text-text-primary">+{gemTotals.shield.hp}%</span></div>
+              </div>
+              <div className="text-center">
+                <div className="text-spear-orange text-text-muted">槍殺 <span className="text-text-primary">+{gemTotals.spear.leth}%</span></div>
+                <div className="text-spear-orange text-text-muted">槍HP <span className="text-text-primary">+{gemTotals.spear.hp}%</span></div>
+              </div>
+              <div className="text-center">
+                <div className="text-bow-green text-text-muted">弓殺 <span className="text-text-primary">+{gemTotals.bow.leth}%</span></div>
+                <div className="text-bow-green text-text-muted">弓HP <span className="text-text-primary">+{gemTotals.bow.hp}%</span></div>
+              </div>
             </div>
           </div>
         </div>
