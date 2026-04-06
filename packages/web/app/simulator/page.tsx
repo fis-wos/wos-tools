@@ -1724,7 +1724,7 @@ export default function SimulatorPage() {
                       計算中...
                     </span>
                   ) : (
-                    '\uD83C\uDFAF この兵比でおすすめ編成を検索'
+                    activeSide === 'atk' ? '⚔️ この兵比で攻撃おすすめ編成を検索' : '🛡️ この兵比で防衛おすすめ編成を検索'
                   )}
                 </button>
                 {isRecommending && recommendProgress && (
