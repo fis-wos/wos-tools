@@ -85,6 +85,13 @@ const EFF_LABELS: Record<string, string> = {
   hp: 'HP',
 };
 
+/** 追加ステータス（バトルレポートの値を直接入力） */
+interface ExtraStats {
+  shieldATK: number; shieldDEF: number; shieldLeth: number; shieldHP: number;
+  spearATK: number; spearDEF: number; spearLeth: number; spearHP: number;
+  bowATK: number; bowDEF: number; bowLeth: number; bowHP: number;
+}
+
 interface SideFormation {
   leaders: (Hero | null)[]; // [shield, spear, bow]
   riders: Hero[];
@@ -105,6 +112,8 @@ interface SideFormation {
   petSpearHp: number;     // 槍兵HP
   petBowLeth: number;     // 弓兵殺傷力
   petBowHp: number;       // 弓兵HP
+  extraStats: ExtraStats;
+  extraStatsEnabled: boolean;
 }
 
 const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number }[] = [
@@ -114,6 +123,12 @@ const RATIO_PRESETS: { label: string; shield: number; spear: number; bow: number
   { label: '3:4:3', shield: 3, spear: 4, bow: 3 },
   { label: '均等', shield: 1, spear: 1, bow: 1 },
 ];
+
+const DEFAULT_EXTRA_STATS: ExtraStats = {
+  shieldATK: 0, shieldDEF: 0, shieldLeth: 0, shieldHP: 0,
+  spearATK: 0, spearDEF: 0, spearLeth: 0, spearHP: 0,
+  bowATK: 0, bowDEF: 0, bowLeth: 0, bowHP: 0,
+};
 
 const DEFAULT_PET = {
   atk: 333.5, def: 333.5,
@@ -143,6 +158,8 @@ function emptyFormation(): SideFormation {
     spearRatio: 0,
     bowRatio: 5,
     troopTier: 11 as TroopTier,
+    extraStats: { ...DEFAULT_EXTRA_STATS },
+    extraStatsEnabled: false,
   };
 }
 
@@ -167,6 +184,8 @@ function formationToTroopCount(f: SideFormation): TroopCount {
 }
 
 function formationToHeroStats(f: SideFormation, isAtk: boolean): TroopStats[] {
+  // 手動入力モードでも英雄ステータスは計算する（デバッグ表示用）
+  // 実際のバトル計算ではextraStatsが優先される
   const config = defaultHeroConfig();
   const leaderEntries = f.leaders
     .filter((h): h is Hero => h !== null)
@@ -179,6 +198,19 @@ function formationToHeroStats(f: SideFormation, isAtk: boolean): TroopStats[] {
     ];
   }
   return calcHeroStats(leaderEntries, isAtk);
+}
+
+/** Convert ExtraStats to the SimConfig format */
+function extraStatsToSimFormat(es: ExtraStats): {
+  shield: { atk: number; def: number; leth: number; hp: number };
+  spear: { atk: number; def: number; leth: number; hp: number };
+  bow: { atk: number; def: number; leth: number; hp: number };
+} {
+  return {
+    shield: { atk: es.shieldATK, def: es.shieldDEF, leth: es.shieldLeth, hp: es.shieldHP },
+    spear: { atk: es.spearATK, def: es.spearDEF, leth: es.spearLeth, hp: es.spearHP },
+    bow: { atk: es.bowATK, def: es.bowDEF, leth: es.bowLeth, hp: es.bowHP },
+  };
 }
 
 /** Compute normalized percentage for display */
