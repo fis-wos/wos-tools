@@ -182,7 +182,14 @@ const MAX_TURNS = 300;
  * C ≈ 50 produces ~35,000 kills/turn → battle resolves in ~50 turns.
  * This will be refined with more battle report data.
  */
-const DAMAGE_COEFFICIENT = 20;
+/**
+ * Damage coefficient C = 12
+ * Calibrated from battle report data:
+ *   kills/T = C × √troops × (baseATK×(1+ATK%) × baseLeth×(1+Leth%))
+ *           / (baseDEF×(1+DEF%) × baseHP×(1+HP%)) × SkillMod × TypeBonus
+ * C=12 gives ±20% accuracy vs real battle reports (geometric mean of C_atk=14.2, C_def=9.8)
+ */
+const DAMAGE_COEFFICIENT = 12;
 
 /** Type advantage bonus multiplier */
 const TYPE_BONUS = 1.10;

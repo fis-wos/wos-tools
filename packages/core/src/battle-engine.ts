@@ -151,7 +151,7 @@ const MAX_TURNS = 300;
  * Raw formula yields ~700 kills/turn with 1.8M troops, needing 2500+ turns.
  * Real battles resolve in 30-60 turns. C=50 → ~35K kills/turn → ~50 turn battles.
  */
-const DAMAGE_COEFFICIENT = 20;
+const DAMAGE_COEFFICIENT = 12;
 
 /** Type advantage bonus multiplier */
 const TYPE_BONUS = 1.10;
